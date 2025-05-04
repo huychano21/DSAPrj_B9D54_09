@@ -1,0 +1,264 @@
+﻿/* TreeAndGraph/wwwroot/css/visualizer.css */
+
+.sort-container {
+    display: flex;
+    gap: 20px; /* Khoảng cách giữa khu vực trực quan và mô tả */
+    margin-top: 20px;
+    min-height: 400px; /* Chiều cao tối thiểu */
+}
+
+.visualization-area {
+    flex: 3; /* Chiếm 3 phần không gian */
+    border: 1px solid #ccc;
+    padding: 15px;
+    background-color: #f9f9f9;
+    position: relative; /* Cần cho định vị tuyệt đối của các phần tử con nếu cần */
+    overflow: hidden; /* Giúp chứa các phần tử */
+}
+
+.description-area {
+    flex: 2; /* Chiếm 2 phần không gian */
+    border: 1px solid #ccc;
+    padding: 15px;
+    background-color: #f0f0f0;
+    overflow-y: auto; /* Cho phép cuộn nếu mô tả dài */
+    max-height: 400px; /* Giới hạn chiều cao */
+}
+
+    .description-area h5 {
+        margin-top: 0;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 5px;
+    }
+
+    .description-area p {
+        font-family: monospace; /* Dễ đọc code/mô tả bước */
+        white-space: pre-wrap; /* Giữ định dạng xuống dòng */
+        margin-bottom: 8px;
+    }
+
+/* --- Kiểu cho Bar Visualization --- */
+.bar-visualization {
+    display: flex;
+    align-items: flex-end; /* Thanh mọc từ dưới lên */
+    height: 350px; /* *** CHIỀU CAO CỐ ĐỊNH BẰNG PIXEL *** */
+    width: 100%;
+    gap: 2px;
+    position: relative;
+    border-bottom: 1px solid #ccc; /* Đường kẻ dưới đáy các thanh (tùy chọn) */
+    margin-bottom: 5px; /* Khoảng cách giữa thanh và hàng giá trị đầu tiên */
+    box-sizing: border-box;
+}
+
+.bar {
+    flex-grow: 1;
+    background-color: dodgerblue; /* Màu cơ bản */
+    border: 1px solid black;
+    transition: background-color 0.3s ease, height 0.3s ease;
+    /*position: relative;*/ /* QUAN TRỌNG: Để định vị span con */
+    text-align: center;
+    box-sizing: border-box; /* Đảm bảo border không làm tăng kích thước */
+}
+
+/* --- Kiểu mới/sửa đổi cho giá trị hiển thị TRÊN thanh KHÔNG CẦN NÊN COMMENT LẠI --- 
+.bar-value-on-bar {
+    position: absolute;  Định vị tuyệt đối so với .bar 
+    top: 5px;  Cách đỉnh 5px 
+    left: 50%;  Căn giữa theo chiều ngang 
+    transform: translateX(-50%);  Tinh chỉnh căn giữa ngang 
+    color: white;  Màu chữ (đảm bảo tương phản) 
+    font-size: 10px;  Cỡ chữ nhỏ 
+    font-weight: bold;
+    overflow: hidden;  Ẩn nếu tràn 
+    white-space: nowrap;  Không xuống dòng 
+    text-overflow: ellipsis;  Thêm dấu ... nếu tràn ngang 
+    width: 90%;  Giới hạn chiều rộng để tránh tràn sát viền 
+    pointer-events: none;  Không bắt sự kiện chuột 
+    z-index: 1;  Đảm bảo hiển thị trên màu nền 
+     --- Kiểu cho Array Visualization ---*/ 
+
+    .array-visualization {
+    display: flex;
+    flex-wrap: wrap;  Cho phép xuống dòng nếu không đủ chỗ 
+    gap: 5px;  Khoảng cách giữa các ô 
+    align-items: center;  Căn giữa các ô theo chiều dọc 
+    padding: 10px;
+}
+.bar-label-container {
+    display: flex;
+    flex-direction: column;  /*Xếp 2 hàng giá trị theo chiều dọc */
+    width: 100%;
+    margin-top: 5px;  /*Khoảng cách từ đường kẻ dưới thanh */
+}
+
+.bar-label-row {
+    display: flex;  /*Các mục nhãn trong 1 hàng nằm ngang*/ 
+    width: 100%;
+    gap: 2px;  /*Đồng bộ khoảng cách với các thanh */
+}
+
+
+.bar-label-item {
+    flex-grow: 1;  /*Mỗi mục nhãn chiếm độ rộng bằng nhau*/ 
+    text-align: center;  /*Căn giữa text*/ 
+    overflow: hidden;
+    white-space: nowrap;
+    
+}
+
+/* Kiểu cho hàng giá trị thứ nhất (ngay dưới thanh) */
+.bar-value-primary {
+    display: inline-block;  /*Hoặc inline-block  */
+    font-size: 11px;  /*Cỡ chữ */
+    color: #333;  /*Màu chữ */
+    font-weight: bold;
+    line-height: 1.2; /*Chiều cao dòng */
+}
+
+/* Kiểu cho hàng giá trị thứ hai (dưới hàng thứ nhất) */
+.bar-value-secondary {
+    display: block;  /*Hoặc inline-block*/ 
+    font-size: 10px;
+    color: #666;
+    margin-top: 2px;  /*Khoảng cách với hàng trên */
+    line-height: 1.2;
+}
+
+
+.array-cell {
+    border: 1px solid #555;
+    padding: 8px 12px;
+    min-width: 40px; /* Chiều rộng tối thiểu */
+    text-align: center;
+    font-weight: bold;
+    background-color: #e9ecef;
+    transition: background-color 0.3s ease, border-color 0.3s ease; /* Hiệu ứng chuyển đổi */
+    position: relative; /* Để chứa chỉ số */
+}
+
+.array-index {
+    position: absolute;
+    top: -18px; /* Hiển thị chỉ số phía trên ô */
+    left: 50%;
+    transform: translateX(-50%);
+    color: #666;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+
+/* --- Kiểu cho Heap Sort Visualization (SVG - Cần CSS phức tạp hơn) --- */
+.heap-visualization svg {
+    width: 100%;
+    height: 350px;
+    border: 1px dashed #aaa;
+}
+
+.heap-node circle {
+    stroke: black;
+    stroke-width: 1;
+    transition: fill 0.3s ease;
+}
+
+.heap-node text {
+    text-anchor: middle; /* Căn giữa text trong node */
+    dominant-baseline: central; /* Căn giữa text theo chiều dọc */
+    fill: white;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.heap-edge {
+    stroke: #555;
+    stroke-width: 1.5;
+}
+
+
+/* --- Kiểu cho các trạng thái (State) --- */
+.state-normal {
+    /* Mặc định (sử dụng màu của .bar hoặc .array-cell) */
+}
+
+.state-comparing {
+    background-color: orange !important; /* Quan trọng để ghi đè màu cơ bản */
+    border-color: darkorange !important;
+}
+
+.state-swapping {
+    background-color: lightcoral !important;
+    border-color: darkred !important;
+    /* Có thể thêm animation nhấp nháy */
+    animation: blink 0.5s infinite alternate;
+}
+
+.state-sorted {
+    background-color: mediumseagreen !important;
+    border-color: darkgreen !important;
+}
+
+.state-pivot {
+    background-color: darkviolet !important;
+    border-color: indigo !important;
+}
+
+.state-special1 { /* Ví dụ: min trong Selection Sort */
+    background-color: gold !important;
+    border-color: goldenrod !important;
+}
+
+.state-special2 { /* Ví dụ: phần tử đang xét trong Insertion Sort */
+    background-color: lightskyblue !important;
+    border-color: deepskyblue !important;
+}
+
+/* Animation nhấp nháy */
+@keyframes blink {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0.6;
+    }
+}
+
+/* CSS cho nút điều khiển */
+.controls {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.input-section {
+    margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: flex-end; /* Căn các input và button theo đáy */
+    padding: 15px;
+    border: 1px solid #ddd;
+    background-color: #fdfdfd;
+    border-radius: 4px;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column; /* Nhãn ở trên input */
+}
+
+    .input-group label {
+        margin-bottom: 3px;
+        font-size: 0.9em;
+        color: #333;
+    }
+
+.button-section {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+    display: flex;
+    flex-wrap: wrap; /* Cho phép các nút xuống dòng */
+    gap: 10px; /* Khoảng cách giữa các nút thuật toán */
+}
+

@@ -1,0 +1,494 @@
+﻿@page "/cay"
+@attribute [StreamRendering]
+@rendermode InteractiveServer
+@inject NotificationService NotificationService
+@inject Radzen.NotificationService NotificationService
+@using System.Text;
+@using Microsoft.AspNetCore.Components.Web;
+@using System.Collections.Generic;
+@using System.Linq;
+
+<h3>Trình Tạo và Duyệt Cây</h3>
+
+<RadzenDropDown @bind-Value="TreeType" Data="TreeOptions" Placeholder="Chọn loại cây" Style="margin-bottom: 10px;" />
+<RadzenDropDown @bind-Value="InputType" Data="InputOptions" Placeholder="Chọn kiểu nhập dữ liệu" Style="margin-bottom: 10px;" />
+
+@if (InputType == "Danh sách cha-con")
+{
+    <RadzenTextArea @bind-Value="ParentChildListInput" Rows="5" Placeholder="Nhập danh sách cha-con, ví dụ: A -> B, A -> C" />
+    <RadzenButton Click="ParseParentChildList" Text="Xác nhận" Style="margin-left: 10px;" />
+}
+else if (InputType == "Chuỗi lồng nhau")
+{
+    <RadzenTextArea @bind-Value="NestedStringInput" Rows="3" Placeholder="Nhập chuỗi lồng nhau, ví dụ: A(B,C(D))" />
+    <RadzenButton Click="ParseNestedString" Text="Xác nhận" Style="margin-left: 10px;" />
+}
+else if (InputType == "Tạo tự động")
+{
+    <RadzenButton Click="GenerateRandomTree" Text="Tạo Cây Ngẫu Nhiên" Style="margin-left: 10px;" />
+}
+
+@if (RootNode != null)
+{
+    <div style="display: flex;">
+        <div>
+            <h4>Cây Được Vẽ</h4>
+            <svg width="800" height="600">
+                <defs>
+                    <marker id="arrowhead" viewBox="0 0 10 10" refX="5" refY="5"
+                            markerWidth="6" markerHeight="6" orient="auto">
+                        <path fill="#808080" d="M 0 0 L 10 5 L 0 10 z" />
+                    </marker>
+                </defs>
+                @RenderTree(RootNode, 400, 50, 250)
+            </svg>
+        </div>
+
+        <div style="margin-left: 30px;">
+            <h4>Chức năng</h4>
+            <RadzenDropDown @bind-Value="SelectedTraversal" Data="TraversalOptions" Placeholder="Chọn phương pháp duyệt" Style="margin-bottom: 10px;" />
+            <RadzenButton Click="PerformTraversal" Text="Thực hiện Duyệt" Style="margin-top: 10px;" />
+            @if (TraversalResult.Any())
+            {
+                <p><strong>Kết quả duyệt (@SelectedTraversal):</strong> @string.Join(" → ", TraversalResult)</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private string TreeType { get; set; } = "Tổng quát";
+    private List<string> TreeOptions = new() { "Tổng quát", "Nhị phân" };
+
+    private string InputType { get; set; } = "Tạo tự động";
+    private List<string> InputOptions = new() { "Danh sách cha-con", "Chuỗi lồng nhau", "Tạo tự động" };
+
+    private string ParentChildListInput = "";
+    private string NestedStringInput = "";
+
+    private TreeNode? RootNode;
+    private Dictionary<TreeNode, (double X, double Y)> NodePositions = new();
+    private Dictionary<string, TreeNode> NodeMap = new(); // Map để tìm node theo data
+
+    private string? SelectedTraversal { get; set; } = "Pre-order";
+    private List<string> TraversalOptions = new() { "Pre-order", "In-order", "Post-order", "Level-order" };
+    private List<string> TraversalResult = new();
+
+    private Random random = new Random();
+    private int newNodeCounter = 1;
+    private const int MinNodes = 3;
+    private const int MaxNodes = 15;
+    private const int MaxDepth = 5; // Giới hạn độ sâu của cây
+
+    public class TreeNode
+    {
+        public string Data { get; set; }
+        public List<TreeNode> Children { get; set; } = new();
+        public TreeNode? Left { get; set; }
+        public TreeNode? Right { get; set; }
+
+        public TreeNode(string data)
+        {
+            Data = data;
+        }
+    }
+
+    private void GenerateRandomTree()
+    {
+        RootNode = null;
+        NodeMap.Clear();
+        newNodeCounter = 1; // Reset counter for new tree
+
+        int numberOfNodes = random.Next(MinNodes, MaxNodes + 1);
+        if (numberOfNodes > 0)
+        {
+            RootNode = new TreeNode(GenerateNewNodeData());
+            NodeMap[RootNode.Data] = RootNode;
+            GenerateRandomSubtree(RootNode, numberOfNodes - 1, 1); // Bắt đầu với độ sâu là 1
+            GenerateTreeLayout(RootNode, 400, 50, 250); // Tăng horizontalSpacing
+        }
+        StateHasChanged();
+    }
+
+    private void GenerateRandomSubtree(TreeNode parent, int remainingNodes, int currentDepth)
+    {
+        if (remainingNodes <= 0 || currentDepth >= MaxDepth) return; // Dừng nếu hết node hoặc đạt độ sâu tối đa
+
+        if (TreeType == "Nhị phân")
+        {
+            // Thêm nút con trái ngẫu nhiên
+            if (remainingNodes > 0 && random.NextDouble() < 0.4) // Giảm xác suất xuống 0.4
+            {
+                remainingNodes--;
+                string newNodeData = GenerateNewNodeData();
+                parent.Left = new TreeNode(newNodeData);
+                NodeMap[newNodeData] = parent.Left;
+                GenerateRandomSubtree(parent.Left, remainingNodes, currentDepth + 1); // Tăng độ sâu
+            }
+
+            // Thêm nút con phải ngẫu nhiên
+            if (remainingNodes > 0 && random.NextDouble() < 0.4) // Giảm xác suất xuống 0.4
+            {
+                remainingNodes--;
+                string newNodeData = GenerateNewNodeData();
+                parent.Right = new TreeNode(newNodeData);
+                NodeMap[newNodeData] = parent.Right;
+                GenerateRandomSubtree(parent.Right, remainingNodes, currentDepth + 1); // Tăng độ sâu
+            }
+        }
+        else // Cây tổng quát
+        {
+            int numberOfChildren = random.Next(1, 3); // Giảm số lượng con tối đa xuống 2 để ít lá hơn
+            for (int i = 0; i < numberOfChildren && remainingNodes > 0; i++)
+            {
+                if (random.NextDouble() < 0.6) // Giảm xác suất xuống 0.6
+                {
+                    remainingNodes--;
+                    string newNodeData = GenerateNewNodeData();
+                    var childNode = new TreeNode(newNodeData);
+                    parent.Children.Add(childNode);
+                    NodeMap[newNodeData] = childNode;
+                    GenerateRandomSubtree(childNode, remainingNodes, currentDepth + 1); // Tăng độ sâu
+                }
+            }
+        }
+    }
+
+    private string GenerateNewNodeData()
+    {
+        return $"N{newNodeCounter++}";
+    }
+
+    private void ParseParentChildList()
+    {
+        RootNode = null;
+        NodeMap.Clear();
+        var lines = ParentChildListInput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var parentChildPairs = new List<(string Parent, string Child)>();
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split("->", StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim()).ToArray();
+            if (parts.Length == 2)
+            {
+                parentChildPairs.Add((parts[0], parts[1]));
+            }
+        }
+
+        if (!parentChildPairs.Any()) return;
+
+        // Find the root (node that is a parent but not a child)
+        var allParents = parentChildPairs.Select(p => p.Parent).Distinct().ToHashSet();
+        var allChildren = parentChildPairs.Select(p => p.Child).Distinct().ToHashSet();
+        var roots = allParents.Except(allChildren).ToList();
+
+        if (roots.Count == 1)
+        {
+            RootNode = new TreeNode(roots[0]);
+            NodeMap[roots[0]] = RootNode;
+            BuildTreeFromParentChildList(parentChildPairs);
+            GenerateTreeLayout(RootNode, 400, 50, 250); // Tăng horizontalSpacing
+        }
+        else if (roots.Count > 1)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Lỗi", "Đồ thị có nhiều hơn một gốc.");
+        }
+        else
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Lỗi", "Không tìm thấy gốc.");
+        }
+        StateHasChanged();
+    }
+
+    private void BuildTreeFromParentChildList(List<(string Parent, string Child)> pairs)
+    {
+        foreach (var (parentData, childData) in pairs)
+        {
+            if (!NodeMap.ContainsKey(parentData))
+            {
+                NodeMap[parentData] = new TreeNode(parentData);
+                if (RootNode == null) RootNode = NodeMap[parentData]; // Handle cases where root might be defined later
+            }
+            if (!NodeMap.ContainsKey(childData))
+            {
+                NodeMap[childData] = new TreeNode(childData);
+            }
+
+            if (TreeType == "Nhị phân")
+            {
+                if (NodeMap[parentData].Left == null)
+                {
+                    NodeMap[parentData].Left = NodeMap[childData];
+                }
+                else if (NodeMap[parentData].Right == null)
+                {
+                    NodeMap[parentData].Right = NodeMap[childData];
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Warning, "Cảnh báo", $"Nút '{parentData}' đã có hai con trong cây nhị phân. Bỏ qua '{childData}'.");
+                }
+            }
+            else // General Tree
+            {
+                NodeMap[parentData].Children.Add(NodeMap[childData]);
+            }
+        }
+        StateHasChanged();
+    }
+
+    private void ParseNestedString()
+    {
+        RootNode = null;
+        NodeMap.Clear();
+        if (string.IsNullOrWhiteSpace(NestedStringInput)) return;
+
+        int index = 0;
+        RootNode = ParseNodeFromNestedString(NestedStringInput, ref index);
+        if (RootNode != null)
+        {
+            GenerateTreeLayout(RootNode, 400, 50, 250); // Tăng horizontalSpacing
+        }
+        StateHasChanged();
+    }
+
+    private TreeNode? ParseNodeFromNestedString(string input, ref int index)
+    {
+        if (index >= input.Length) return null;
+
+        char currentNodeData = input[index++];
+        var node = new TreeNode(currentNodeData.ToString());
+        NodeMap[currentNodeData.ToString()] = node;
+
+        if (index < input.Length && input[index] == '(')
+        {
+            index++; // Skip '('
+            while (index < input.Length)
+            {
+                if (input[index] == ')')
+                {
+                    index++; // Skip ')'
+                    break;
+                }
+                if (TreeType == "Nhị phân")
+                {
+                    if (node.Left == null)
+                    {
+                        node.Left = ParseNodeFromNestedString(input, ref index);
+                    }
+                    else if (node.Right == null)
+                    {
+                        node.Right = ParseNodeFromNestedString(input, ref index);
+                    }
+                    else
+                    {
+                        // Handle error: more than two children for a binary tree
+                        int tempIndex = index;
+                        while (tempIndex < input.Length && input[tempIndex] != ',' && input[tempIndex] != ')')
+                        {
+                            tempIndex++;
+                        }
+                        string skippedChild = input.Substring(index, tempIndex - index);
+                        NotificationService.Notify(NotificationSeverity.Warning, "Cảnh báo", $"Nút '{node.Data}' đã có hai con trong cây nhị phân. Bỏ qua '{skippedChild}'.");
+                        index = tempIndex;
+                        if (index < input.Length && input[index] == ',') index++; // Skip comma
+                    }
+                }
+                else // General Tree
+                {
+                    var child = ParseNodeFromNestedString(input, ref index);
+                    if (child != null)
+                    {
+                        node.Children.Add(child);
+                    }
+                }
+                if (index < input.Length && input[index] == ',')
+                {
+                    index++; // Skip comma
+                }
+            }
+        }
+        return node;
+    }
+
+    private void GenerateTreeLayout(TreeNode? node, double x, double y, double horizontalSpacing)
+    {
+        if (node == null) return;
+
+        NodePositions[node] = (x, y);
+
+        if (TreeType == "Nhị phân")
+        {
+            GenerateTreeLayout(node.Left, x - horizontalSpacing / 2, y + 70, horizontalSpacing / 2);
+            GenerateTreeLayout(node.Right, x + horizontalSpacing / 2, y + 70, horizontalSpacing / 2);
+        }
+        else // General Tree
+        {
+            if (node.Children.Any())
+            {
+                double childrenWidth = node.Children.Count * 150; // Tăng lên 150
+                double startX = x - childrenWidth / 2 + 75; // Điều chỉnh startX
+                for (int i = 0; i < node.Children.Count; i++)
+                {
+                    GenerateTreeLayout(node.Children[i], startX + i * 150, y + 70, horizontalSpacing / 2); // Tăng khoảng cách trong vòng lặp
+                }
+            }
+        }
+    }
+
+    private MarkupString RenderTree(TreeNode? node, double x, double y, double horizontalSpacing)
+    {
+        if (node == null) return new MarkupString();
+
+        var sb = new StringBuilder();
+        var (nx, ny) = NodePositions[node];
+        var nodeId = $"node-{node.Data.Replace(" ", "_")}";
+
+        if (TreeType == "Nhị phân")
+        {
+            if (node.Left != null && NodePositions.ContainsKey(node.Left))
+            {
+                var (cx, cy) = NodePositions[node.Left];
+                sb.AppendLine($"<line x1='{nx}' y1='{ny}' x2='{cx}' y2='{cy}' stroke='#808080' stroke-width='2' marker-end='url(#arrowhead)' />");
+                sb.AppendLine(RenderTree(node.Left, nx - horizontalSpacing / 2, ny + 70, horizontalSpacing / 2).Value);
+            }
+            if (node.Right != null && NodePositions.ContainsKey(node.Right))
+            {
+                var (cx, cy) = NodePositions[node.Right];
+                sb.AppendLine($"<line x1='{nx}' y1='{ny}' x2='{cx}' y2='{cy}' stroke='#808080' stroke-width='2' marker-end='url(#arrowhead)' />");
+                sb.AppendLine(RenderTree(node.Right, nx + horizontalSpacing / 2, ny + 70, horizontalSpacing / 2).Value);
+            }
+        }
+        else // General Tree
+        {
+            for (int i = 0; i < node.Children.Count; i++)
+            {
+                if (NodePositions.ContainsKey(node.Children[i]))
+                {
+                    var (cx, cy) = NodePositions[node.Children[i]];
+                    sb.AppendLine($"<line x1='{nx}' y1='{ny}' x2='{cx}' y2='{cy}' stroke='#808080' stroke-width='2' marker-end='url(#arrowhead)' />");
+                    sb.AppendLine(RenderTree(node.Children[i], cx, cy, horizontalSpacing / 2).Value);
+                }
+            }
+        }
+
+        sb.AppendLine($"<circle id='{nodeId}' cx='{nx}' cy='{ny}' r='20' fill='lightblue' stroke='blue' stroke-width='2' style='cursor: default;' />");
+        sb.AppendLine($"<text x='{nx}' y='{ny + 7}' font-size='12' text-anchor='middle' fill='black'>{node.Data}</text>");
+
+        return new MarkupString(sb.ToString());
+    }
+
+    private void PerformTraversal()
+    {
+        TraversalResult.Clear();
+        if (RootNode == null) return;
+
+        switch (SelectedTraversal)
+        {
+            case "Pre-order":
+                PreOrderTraversal(RootNode);
+                break;
+            case "In-order":
+                InOrderTraversal(RootNode);
+                break;
+            case "Post-order":
+                PostOrderTraversal(RootNode);
+                break;
+            case "Level-order":
+                LevelOrderTraversal(RootNode);
+                break;
+        }
+    }
+
+    private void PreOrderTraversal(TreeNode? node)
+    {
+        if (node != null)
+        {
+            TraversalResult.Add(node.Data);
+            if (TreeType == "Nhị phân")
+            {
+                PreOrderTraversal(node.Left);
+                PreOrderTraversal(node.Right);
+            }
+            else
+            {
+                foreach (var child in node.Children)
+                {
+                    PreOrderTraversal(child);
+                }
+            }
+        }
+    }
+
+    private void InOrderTraversal(TreeNode? node)
+    {
+        if (node != null)
+        {
+            if (TreeType == "Nhị phân")
+            {
+                InOrderTraversal(node.Left);
+                TraversalResult.Add(node.Data);
+                InOrderTraversal(node.Right);
+            }
+            else
+            {
+                if (node.Children.Any())
+                {
+                    InOrderTraversal(node.Children.First());
+                }
+                TraversalResult.Add(node.Data);
+                foreach (var child in node.Children.Skip(1))
+                {
+                    InOrderTraversal(child);
+                }
+            }
+        }
+    }
+
+    private void PostOrderTraversal(TreeNode? node)
+    {
+        if (node != null)
+        {
+            if (TreeType == "Nhị phân")
+            {
+                PostOrderTraversal(node.Left);
+                PostOrderTraversal(node.Right);
+            }
+            else
+            {
+                foreach (var child in node.Children)
+                {
+                    PostOrderTraversal(child);
+                }
+            }
+            TraversalResult.Add(node.Data);
+        }
+    }
+
+    private void LevelOrderTraversal(TreeNode? root)
+    {
+        if (root == null) return;
+
+        var queue = new Queue<TreeNode>();
+        queue.Enqueue(root);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            TraversalResult.Add(current.Data);
+
+            if (TreeType == "Nhị phân")
+            {
+                if (current.Left != null) queue.Enqueue(current.Left);
+                if (current.Right != null) queue.Enqueue(current.Right);
+            }
+            else
+            {
+                foreach (var child in current.Children)
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+    }
+}

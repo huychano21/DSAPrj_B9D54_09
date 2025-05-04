@@ -1,0 +1,633 @@
+﻿@page "/separateChaining"
+@rendermode InteractiveServer
+@inject Radzen.NotificationService RadzenNotificationService
+@inject IJSRuntime JSRuntime
+@using System.Text;
+@implements IDisposable
+
+<link href="css/style.css" rel="stylesheet" />
+<link href="css/SeparateChaining.css" rel="stylesheet" />
+
+
+<RadzenPanel class="header-panel rz-shadow-3 rz-my-4">
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+            <RadzenIcon Icon="grid_on" Style="font-size: 2rem; color: var(--rz-primary);" />
+            <RadzenText Text="Bảng Băm " TextStyle="TextStyle.H5" TagName="TagName.H1" />
+        </RadzenStack>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+            <RadzenLabel Text="Kích thước:" />
+            <RadzenNumeric TValue="int" @bind-Value="tableSize" Min="1" Max="50" Name="TableSizeInput" Style="width:80px;" Disabled="@isProcessing" />
+            <RadzenButton Text="Khởi tạo" Click="InitializeHashTable" Icon="refresh" ButtonStyle="ButtonStyle.Primary" IsBusy="@isProcessing" Disabled="@(isProcessing || tableSize <= 0)" />
+            <RadzenButton Text="Reset" Click="ResetVisualization" Icon="clear" ButtonStyle="ButtonStyle.Light" Disabled="@isProcessing" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenPanel>
+
+<div class="main-content-area">
+    @* Container chính cho 2 cột *@
+
+    @* --- Cột Điều khiển (Bên trái) --- *@
+    <div class="control-panel">
+        <RadzenCard class="rz-shadow-4">
+            <RadzenStack Gap="20px">
+                <RadzenText Text="Thao tác Phần tử" TextStyle="TextStyle.H6" />
+                <RadzenFieldset>
+                    @* Sử dụng Fieldset để nhóm input *@
+                    <RadzenStack Gap="15px">
+                        <RadzenStack Gap="5px">
+                            <RadzenLabel Text="Khóa (Key):" Component="selectedKeyInput" />
+                            <RadzenTextBox @bind-Value="selectedKey" Name="selectedKeyInput" Placeholder="Nhập hoặc chọn khóa..." Style="width:100%;" Disabled="@isProcessing" Change="@OnInputKeyChange" />
+                        </RadzenStack>
+                        <RadzenStack Gap="5px">
+                            <RadzenLabel Text="Giá trị (Value):" Component="selectedValueInput" />
+                            <RadzenTextBox @bind-Value="selectedValue" Name="selectedValueInput" Placeholder="Nhập hoặc chọn giá trị..." Style="width:100%;" Disabled="@isProcessing" />
+                        </RadzenStack>
+                    </RadzenStack>
+                </RadzenFieldset>
+
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="10px" JustifyContent="JustifyContent.SpaceAround">
+                    <RadzenButton Text="Thêm / Cập nhật" Click="InsertOrUpdateKey" Icon="save" ButtonStyle="ButtonStyle.Primary" Disabled="@(string.IsNullOrWhiteSpace(selectedKey) || isProcessing)" />
+                    <RadzenButton Text="Tìm kiếm" Click="SearchKey" Icon="search" ButtonStyle="ButtonStyle.Info" Disabled="@(string.IsNullOrWhiteSpace(selectedKey) || isProcessing)" />
+                </RadzenStack>
+                <RadzenButton Text="Xóa Mục Đã Chọn" Click="DeleteSelectedKey" Icon="delete_sweep" ButtonStyle="ButtonStyle.Danger" Disabled="@(string.IsNullOrWhiteSpace(selectedKeyFromSelection) || isProcessing)" />
+            </RadzenStack>
+        </RadzenCard>
+    </div>
+
+    @* --- Cột Hiển thị Bảng Băm & Log (Bên phải) --- *@
+    <div class="visualization-area">
+        @if (hashTable != null)
+        {
+            <div class="hash-table-container-vertical">
+                @* Container dọc mới *@
+                @for (int i = 0; i < hashTable.Length; i++)
+                {
+                    int bucketIndex = i; // Capture loop variable
+                    var bucket = hashTable[bucketIndex]; // Đây là một List<KeyValuePair<string, string>>
+                    string bucketClass = "hash-bucket";
+
+                    // Highlight bucket nếu đang probing hoặc thành công/thất bại ở bucket này
+                    if (probingIndices.Contains(bucketIndex)) bucketClass += " probing";
+                    if (successIndex == bucketIndex) bucketClass += " success";
+                    if (failIndex == bucketIndex) bucketClass += " fail";
+
+                    <div class="@bucketClass" id="@($"bucket-{bucketIndex}")">
+                        <div class="bucket-header">
+                            <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Shade="Shade.Lighter" Text="@($"Index [{bucketIndex}]")" />
+                        </div>
+                        <div class="bucket-chain">
+                            @if (bucket == null || !bucket.Any())
+                            {
+                                <span class="empty-bucket-text">(Trống)</span>
+                            }
+                            else
+                            {
+                                @foreach (var kvp in bucket)
+                                {
+                                    string itemKey = kvp.Key; // Capture key for lambda
+                                    string itemClass = "chain-item";
+                                    if (itemKey == selectedKeyFromSelection && selectedBucketIndex == bucketIndex) // Highlight item đã chọn
+                                    {
+                                        itemClass += " selected";
+                                    }
+                                    if (highlightedKey == itemKey && highlightedBucketIndex == bucketIndex) // Highlight item đang được thao tác (tìm, thêm, xóa)
+                                    {
+                                        itemClass += " active-item";
+                                    }
+
+                                    <div class="@itemClass" @onclick="() => SelectItem(bucketIndex, itemKey)">
+                                        <span class="chain-key" title="@itemKey">@itemKey</span>
+                                        <span class="chain-value" title="@kvp.Value">@kvp.Value</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* Log hoạt động ở góc dưới bên phải *@
+            <div class="operation-log-bottom-right">
+                <RadzenText Text="Nhật ký Hoạt động" TextStyle="TextStyle.Subtitle2" Style="margin-bottom: 5px;" />
+                <div class="log-content">
+                    @if (operationLog.Any())
+                    {
+                        foreach (var log in operationLog)
+                        {
+                            <div class="log-entry @log.CssClass">@log.Message</div>
+                        }
+                    }
+                    else
+                    {
+                        <span style="color: #888;">...</span>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="placeholder-text">Khởi tạo bảng băm để bắt đầu trực quan.</div>
+        }
+    </div>
+
+</div>
+
+@code {
+    // --- UI State ---
+    private int tableSize = 7; // Kích thước mặc định (số nguyên tố nhỏ)
+    private string selectedKey = "";    // Bound to Key input
+    private string selectedValue = "";  // Bound to Value input
+    private string selectedKeyFromSelection = null; // Key thực sự được chọn từ click, để phân biệt với input
+    private int? selectedBucketIndex = null;  // Bucket index của item được chọn
+    private bool isProcessing = false;
+    private CancellationTokenSource _operationCts = new();
+
+    // --- Hash Table Data Structure (Open Hashing / Separate Chaining) ---
+    private List<KeyValuePair<string, string>>[] hashTable = null; // Mảng các danh sách
+
+    // --- Visualization State ---
+    private HashSet<int> probingIndices = new(); // Indices của bucket đang được kiểm tra
+    private int? successIndex = null;        // Index của bucket thành công
+    private int? failIndex = null;           // Index của bucket thất bại
+    private string highlightedKey = null; // Key cụ thể đang được highlight trong thao tác
+    private int? highlightedBucketIndex = null; // Bucket của key đang được highlight
+    private List<LogEntry> operationLog = new();
+
+    public class LogEntry
+    {
+        public string Message { get; set; } = "";
+        public string CssClass { get; set; } = "info";
+    }
+
+    // --- Lifecycle & Reset ---
+    protected override void OnInitialized()
+    {
+        // Khởi tạo mặc định khi component tải lần đầu
+        if (hashTable == null)
+        {
+            InitializeHashTableInternal(); // Gọi hàm nội bộ để không trigger async/await không cần thiết ở đây
+        }
+    }
+
+    public void Dispose() { _operationCts.Cancel(); _operationCts.Dispose(); }
+
+    private async Task ResetVisualization()
+    {
+        _operationCts.Cancel();
+        _operationCts = new CancellationTokenSource();
+        hashTable = null;
+        ClearSelectionAndHighlights();
+        operationLog.Clear();
+        isProcessing = false;
+        await InvokeAsync(StateHasChanged);
+        // Có thể gọi InitializeHashTableInternal() ở đây để tự tạo lại bảng sau khi reset
+        InitializeHashTableInternal();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearSelectionAndHighlights()
+    {
+        selectedKey = "";
+        selectedValue = "";
+        selectedKeyFromSelection = null;
+        selectedBucketIndex = null;
+        probingIndices.Clear();
+        successIndex = null;
+        failIndex = null;
+        highlightedKey = null;
+        highlightedBucketIndex = null;
+    }
+
+    private void ClearHighlightsAndLog()
+    {
+        probingIndices.Clear();       // Xóa danh sách các bucket đang dò
+        successIndex = null;          // Xóa index bucket thành công
+        failIndex = null;             // Xóa index bucket thất bại
+        highlightedKey = null;        // Xóa key đang được highlight
+        highlightedBucketIndex = null;// Xóa bucket đang được highlight
+        operationLog.Clear();         // Xóa nhật ký hoạt động cũ
+
+        // Lưu ý: Phương thức này KHÔNG xóa trạng thái lựa chọn (selectedKey, selectedValue, selectedKeyFromSelection, selectedBucketIndex)
+        // vì các trạng thái đó có thể cần được sử dụng ngay sau đó trong thao tác sắp bắt đầu.
+        // Việc xóa trạng thái lựa chọn sẽ được thực hiện riêng khi thao tác hoàn thành (thành công/thất bại) nếu cần.
+    }
+
+    // Clear selection khi người dùng gõ vào ô Key input
+    private void OnInputKeyChange(string newKeyValue)
+    {
+        if (selectedKeyFromSelection != null && newKeyValue != selectedKeyFromSelection)
+        {
+            // Nếu key trong input khác key đang chọn -> bỏ chọn
+            selectedKeyFromSelection = null;
+            selectedValue = ""; // Có thể giữ lại value nếu muốn? Tạm thời xóa
+            selectedBucketIndex = null;
+            StateHasChanged(); // Cập nhật UI để bỏ highlight selection
+        }
+    }
+
+
+    private void AddLog(string message, string cssClass = "info")
+    {
+        operationLog.Insert(0, new LogEntry { Message = message, CssClass = cssClass });
+        if (operationLog.Count > 50) operationLog.RemoveAt(operationLog.Count - 1);
+    }
+
+    // --- Hash Table Initialization ---
+    private async Task InitializeHashTable() // Hàm này được gọi bởi nút bấm
+    {
+        if (tableSize <= 0)
+        {
+            ShowNotification(NotificationSeverity.Warning, "Kích thước bảng phải lớn hơn 0.");
+            return;
+        }
+        isProcessing = true;
+        ClearSelectionAndHighlights();
+        operationLog.Clear(); // Xóa log cũ khi khởi tạo lại
+        _operationCts.Cancel();
+        _operationCts = new CancellationTokenSource();
+
+        InitializeHashTableInternal(); // Gọi hàm nội bộ
+
+        isProcessing = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void InitializeHashTableInternal() // Hàm nội bộ để khởi tạo mảng
+    {
+        AddLog($"Khởi tạo bảng băm (Separate Chaining) kích thước {tableSize}.", "info");
+        hashTable = new List<KeyValuePair<string, string>>[tableSize];
+        // Với Separate Chaining, các bucket ban đầu là null (hoặc list rỗng tùy cách triển khai)
+        // Ở đây để là null, sẽ tạo List khi cần chèn vào bucket lần đầu.
+    }
+
+
+    // --- Hashing Logic ---
+    private int HashFunction(string key)
+    {
+        if (string.IsNullOrEmpty(key) || hashTable == null || hashTable.Length == 0) return 0;
+        int hashCode = key.GetHashCode();
+        int index = (hashCode & 0x7FFFFFFF) % hashTable.Length;
+        return index;
+    }
+
+    // --- Click Interaction ---
+    private async Task SelectItem(int bucketIndex, string key)
+    {
+        if (hashTable == null || bucketIndex < 0 || bucketIndex >= hashTable.Length || isProcessing) return;
+
+        var bucket = hashTable[bucketIndex];
+        if (bucket != null)
+        {
+            var item = bucket.FirstOrDefault(kvp => kvp.Key == key);
+            if (!item.Equals(default(KeyValuePair<string, string>))) // Kiểm tra xem có tìm thấy item không
+            {
+                selectedKey = item.Key;         // Cập nhật input Key
+                selectedValue = item.Value;       // Cập nhật input Value
+                selectedKeyFromSelection = item.Key; // Lưu key thực sự được chọn
+                selectedBucketIndex = bucketIndex; // Lưu index của bucket chứa item
+
+                AddLog($"Đã chọn Item: Key='{item.Key}', Value='{item.Value}' tại Bucket [{bucketIndex}]", "info");
+
+                // Hiệu ứng JS (Flash bucket chứa item)
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("flashElement", $"bucket-{bucketIndex}");
+                }
+                catch (Exception ex) { Console.WriteLine($"JS interop error (flashElement): {ex.Message}"); }
+            }
+            else
+            {
+                // Item không tìm thấy trong bucket (lỗi logic?) - nên reset selection
+                ClearSelectionAndHighlights();
+                AddLog($"Lỗi: Không tìm thấy item với key '{key}' trong bucket {bucketIndex} khi click.", "error");
+            }
+        }
+        else
+        {
+            // Click vào bucket rỗng (null) -> reset selection
+            ClearSelectionAndHighlights();
+            AddLog($"Click vào bucket rỗng [{bucketIndex}]", "info");
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // --- Operations (Insert/Update, Search, Delete) ---
+
+    private async Task InsertOrUpdateKey()
+    {
+        if (string.IsNullOrWhiteSpace(selectedKey)) { ShowNotification(NotificationSeverity.Warning, "Nhập Khóa để thêm hoặc cập nhật."); return; }
+        if (hashTable == null) { ShowNotification(NotificationSeverity.Error, "Bảng băm chưa được khởi tạo."); return; }
+        if (isProcessing) return;
+
+        isProcessing = true;
+        ClearHighlightsAndLog(); // Xóa highlight cũ, giữ lại selection từ input
+        _operationCts.Cancel();
+        _operationCts = new CancellationTokenSource();
+        var token = _operationCts.Token;
+
+        string keyToProcess = selectedKey;
+        string valueToProcess = selectedValue ?? ""; // Đảm bảo value không null
+        int bucketIndex = HashFunction(keyToProcess);
+
+        probingIndices.Add(bucketIndex); // Highlight bucket đích
+        highlightedKey = keyToProcess;   // Highlight key sẽ thao tác
+        highlightedBucketIndex = bucketIndex;
+        AddLog($"Băm Key '{keyToProcess}': Bucket Index = {bucketIndex}", "info");
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(200, token); // Delay ngắn
+
+        try
+        {
+            // Khởi tạo bucket nếu nó là null
+            if (hashTable[bucketIndex] == null)
+            {
+                AddLog($"Bucket [{bucketIndex}] trống, đang tạo danh sách...", "info");
+                hashTable[bucketIndex] = new List<KeyValuePair<string, string>>();
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(100, token);
+            }
+
+            var bucket = hashTable[bucketIndex];
+            int existingItemIndex = bucket.FindIndex(kvp => kvp.Key == keyToProcess);
+
+            // --- CẬP NHẬT ---
+            if (existingItemIndex != -1)
+            {
+                AddLog($"Key '{keyToProcess}' đã tồn tại trong Bucket [{bucketIndex}]. Đang cập nhật Value...", "info");
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(200, token);
+
+                var oldKvp = bucket[existingItemIndex];
+                bucket[existingItemIndex] = new KeyValuePair<string, string>(keyToProcess, valueToProcess); // Thay thế bằng KVP mới
+                successIndex = bucketIndex;
+                AddLog($"Đã cập nhật Value cho Key '{keyToProcess}' thành '{valueToProcess}'.", "success");
+                ShowNotification(NotificationSeverity.Success, $"Đã cập nhật Key '{keyToProcess}'");
+                // Giữ selection nếu key cập nhật trùng với key đang chọn
+                if (selectedKeyFromSelection != keyToProcess)
+                {
+                    // ClearSelectionAndHighlights(); // Chỉ xóa nếu key cập nhật không phải key đang chọn
+                }
+                else
+                {
+                    selectedValue = valueToProcess; // Đồng bộ value input nếu đang chọn item đó
+                }
+            }
+            // --- THÊM MỚI ---
+            else
+            {
+                AddLog($"Key '{keyToProcess}' chưa có. Đang thêm vào Bucket [{bucketIndex}]...", "info");
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(200, token);
+
+                bucket.Add(new KeyValuePair<string, string>(keyToProcess, valueToProcess));
+                successIndex = bucketIndex;
+                AddLog($"Đã thêm Key '{keyToProcess}' / Value '{valueToProcess}' vào Bucket [{bucketIndex}].", "success");
+                ShowNotification(NotificationSeverity.Success, $"Đã thêm Key '{keyToProcess}'");
+                ClearSelectionAndHighlights(); // Xóa input và selection sau khi thêm mới thành công
+            }
+        }
+        catch (OperationCanceledException) { AddLog("Thao tác Thêm/Cập nhật bị hủy.", "info"); ShowNotification(NotificationSeverity.Info, "Operation cancelled."); }
+        catch (Exception ex) { AddLog($"Lỗi khi Thêm/Cập nhật: {ex.Message}", "error"); ShowNotification(NotificationSeverity.Error, $"Error: {ex.Message}"); failIndex = bucketIndex; } // Đánh dấu fail ở bucket đó
+        finally
+        {
+            await Task.Delay(400, CancellationToken.None); // Giữ highlight cuối
+            probingIndices.Clear();
+            highlightedKey = null;
+            highlightedBucketIndex = null;
+            isProcessing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SearchKey()
+    {
+        if (string.IsNullOrWhiteSpace(selectedKey))
+        {
+            ShowNotification(NotificationSeverity.Warning, "Nhập Khóa để tìm.");
+            return;
+        }
+        if (hashTable == null)
+        {
+            ShowNotification(NotificationSeverity.Error, "Bảng băm chưa được khởi tạo.");
+            return;
+        }
+        if (isProcessing) return;
+
+        isProcessing = true;
+        // Clear highlight và log cũ, NHƯNG giữ lại giá trị input (selectedKey, selectedValue)
+        // và selection cũ (selectedKeyFromSelection, selectedBucketIndex) để phòng trường hợp tìm lại chính nó
+        probingIndices.Clear();
+        successIndex = null;
+        failIndex = null;
+        highlightedKey = null;
+        highlightedBucketIndex = null;
+        operationLog.Clear();
+        // KHÔNG gọi ClearSelectionAndHighlights() ở đây
+
+        _operationCts.Cancel();
+        _operationCts = new CancellationTokenSource();
+        var token = _operationCts.Token;
+
+        // Lấy key từ input và loại bỏ khoảng trắng thừa
+        string keyToSearch = selectedKey.Trim();
+        // Nếu sau khi Trim() mà key rỗng thì dừng lại
+        if (string.IsNullOrWhiteSpace(keyToSearch))
+        {
+            ShowNotification(NotificationSeverity.Warning, "Khóa tìm kiếm không hợp lệ (chỉ chứa khoảng trắng?).");
+            isProcessing = false; // Reset processing state
+            await InvokeAsync(StateHasChanged); // Ensure UI updates if needed
+            return;
+        }
+
+
+        int bucketIndex = HashFunction(keyToSearch);
+
+        probingIndices.Add(bucketIndex); // Highlight bucket cần tìm
+        highlightedKey = keyToSearch;    // Tạm highlight key này (sẽ được giữ nếu tìm thấy)
+        highlightedBucketIndex = bucketIndex;
+        AddLog($"Băm Key '{keyToSearch}': Bucket Index = {bucketIndex}. Đang tìm kiếm...", "info");
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(300, token);
+
+        try
+        {
+            var bucket = hashTable[bucketIndex];
+            bool found = false;
+
+            if (bucket != null && bucket.Any()) // Chỉ tìm nếu bucket tồn tại và có phần tử
+            {
+                AddLog($"Kiểm tra các mục trong Bucket [{bucketIndex}]...", "info");
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(150, token); // Delay nhỏ trước khi duyệt
+
+                foreach (var kvp in bucket)
+                {
+                    if (token.IsCancellationRequested) throw new OperationCanceledException();
+
+                    // Highlight item đang so sánh (dùng highlightedKey cho CSS active-item)
+                    highlightedKey = kvp.Key;
+                    AddLog($"So sánh '{keyToSearch}' với Key '{kvp.Key}'...", "probing");
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(200, token); // Chậm lại chút để thấy so sánh
+
+                    if (kvp.Key == keyToSearch) // Phân biệt hoa thường
+                    {
+                        successIndex = bucketIndex;
+                        // Cập nhật selection và inputs để phản ánh kết quả tìm thấy
+                        selectedKey = kvp.Key;                  // Cập nhật input Key
+                        selectedValue = kvp.Value;              // Cập nhật input Value
+                        selectedKeyFromSelection = kvp.Key;     // Cập nhật selection nội bộ
+                        selectedBucketIndex = bucketIndex;      // Cập nhật selection nội bộ
+                        highlightedKey = kvp.Key;               // Đảm bảo key tìm thấy được highlight
+
+                        AddLog($"Tìm thấy Key '{keyToSearch}' / Value '{kvp.Value}' tại Bucket [{bucketIndex}].", "success");
+                        ShowNotification(NotificationSeverity.Success, $"Tìm thấy '{keyToSearch}'");
+                        found = true;
+
+                        // Flash bucket chứa item tìm thấy
+                        try { await JSRuntime.InvokeVoidAsync("flashElement", $"bucket-{bucketIndex}"); } catch { }
+                        break; // Thoát vòng lặp foreach khi đã tìm thấy
+                    }
+                    else
+                    {
+                        // Bỏ highlight item vừa so sánh nếu không khớp
+                        highlightedKey = null; // Hoặc đặt lại là keyToSearch? Tạm thời bỏ highlight item cụ thể này
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+            }
+
+            // Xử lý trường hợp không tìm thấy sau khi đã kiểm tra bucket (nếu có)
+            if (!found)
+            {
+                failIndex = bucketIndex; // Đánh dấu bucket thất bại
+                highlightedKey = null; // Không tìm thấy thì không highlight key nào cả
+                highlightedBucketIndex = bucketIndex; // Vẫn giữ highlight bucket thất bại
+
+                if (bucket == null)
+                {
+                    AddLog($"Bucket [{bucketIndex}] trống. Key '{keyToSearch}' không tìm thấy.", "error");
+                }
+                else if (!bucket.Any()) // Bucket có tồn tại nhưng rỗng
+                {
+                    AddLog($"Bucket [{bucketIndex}] không có phần tử nào. Key '{keyToSearch}' không tìm thấy.", "error");
+                }
+                else // Bucket có phần tử nhưng không chứa key cần tìm
+                {
+                    AddLog($"Đã duyệt hết Bucket [{bucketIndex}]. Key '{keyToSearch}' không tìm thấy.", "error");
+                }
+                ShowNotification(NotificationSeverity.Warning, $"Không tìm thấy Key '{keyToSearch}'");
+
+                // Chỉ xóa trạng thái lựa chọn từ click, không xóa input của người dùng
+                selectedKeyFromSelection = null;
+                selectedBucketIndex = null;
+            }
+        }
+        catch (OperationCanceledException) { AddLog("Thao tác tìm kiếm bị hủy.", "info"); ShowNotification(NotificationSeverity.Info, "Search cancelled."); }
+        catch (Exception ex)
+        {
+            AddLog($"Lỗi khi tìm kiếm: {ex.Message}", "error");
+            ShowNotification(NotificationSeverity.Error, $"Error searching: {ex.Message}");
+            failIndex = bucketIndex; // Đánh dấu bucket thất bại
+            highlightedKey = null; // Clear highlight key khi có lỗi
+            highlightedBucketIndex = bucketIndex; // Giữ highlight bucket lỗi
+                                                  // Xóa trạng thái lựa chọn khi có lỗi không mong muốn
+            selectedKeyFromSelection = null;
+            selectedBucketIndex = null;
+        }
+        finally
+        {
+            await Task.Delay(400, CancellationToken.None); // Giữ highlight cuối cùng (success/fail bucket)
+            probingIndices.Clear(); // Xóa highlight probing
+
+            // Chỉ xóa highlight key nếu không tìm thấy hoặc có lỗi
+            if (successIndex == null)
+            {
+                highlightedKey = null;
+                highlightedBucketIndex = null;
+            }
+            // Nếu tìm thấy (found = true), highlightedKey và highlightedBucketIndex đã được đặt đúng ở trên và sẽ được giữ lại
+
+            isProcessing = false;
+            await InvokeAsync(StateHasChanged); // Cập nhật UI lần cuối
+        }
+    }
+
+    private async Task DeleteSelectedKey()
+    {
+        // Chỉ xóa nếu có một mục đang được chọn từ click VÀ key đó khớp
+        if (string.IsNullOrWhiteSpace(selectedKeyFromSelection) || !selectedBucketIndex.HasValue)
+        {
+            ShowNotification(NotificationSeverity.Warning, "Chọn một mục trong bảng (bằng cách click) để xóa.");
+            return;
+        }
+        if (hashTable == null) { ShowNotification(NotificationSeverity.Error, "Bảng băm chưa được khởi tạo."); return; }
+        if (isProcessing) return;
+
+        isProcessing = true;
+        ClearHighlightsAndLog(); // Xóa highlight cũ, giữ selection để biết xóa cái gì
+        _operationCts.Cancel();
+        _operationCts = new CancellationTokenSource();
+        var token = _operationCts.Token;
+
+        int bucketIndex = selectedBucketIndex.Value;
+        string keyToDelete = selectedKeyFromSelection;
+
+        probingIndices.Add(bucketIndex); // Highlight bucket chứa mục cần xóa
+        highlightedKey = keyToDelete;    // Highlight key sẽ bị xóa
+        highlightedBucketIndex = bucketIndex;
+        AddLog($"Bắt đầu xóa Key '{keyToDelete}' từ Bucket [{bucketIndex}]...", "info");
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(300, token);
+
+        try
+        {
+            var bucket = hashTable[bucketIndex];
+            bool removed = false;
+            if (bucket != null)
+            {
+                // Tìm và xóa item khỏi List
+                var itemToRemove = bucket.FirstOrDefault(kvp => kvp.Key == keyToDelete);
+                if (!itemToRemove.Equals(default(KeyValuePair<string, string>)))
+                {
+                    removed = bucket.Remove(itemToRemove);
+                }
+            }
+
+            if (removed)
+            {
+                successIndex = bucketIndex;
+                AddLog($"Đã xóa Key '{keyToDelete}' khỏi Bucket [{bucketIndex}].", "success");
+                ShowNotification(NotificationSeverity.Success, $"Đã xóa Key '{keyToDelete}'");
+                ClearSelectionAndHighlights(); // Xóa input và selection sau khi xóa thành công
+            }
+            else
+            {
+                failIndex = bucketIndex;
+                AddLog($"Lỗi: Không tìm thấy Key '{keyToDelete}' trong Bucket [{bucketIndex}] để xóa (hoặc bucket rỗng).", "error");
+                ShowNotification(NotificationSeverity.Error, $"Không thể xóa Key '{keyToDelete}'");
+                // Giữ lại selection vì xóa thất bại
+            }
+        }
+        catch (OperationCanceledException) { AddLog("Thao tác xóa bị hủy.", "info"); ShowNotification(NotificationSeverity.Info, "Deletion cancelled."); }
+        catch (Exception ex) { AddLog($"Lỗi khi xóa: {ex.Message}", "error"); ShowNotification(NotificationSeverity.Error, $"Error deleting: {ex.Message}"); failIndex = bucketIndex; }
+        finally
+        {
+            await Task.Delay(400, CancellationToken.None); // Giữ highlight cuối
+            probingIndices.Clear();
+            highlightedKey = null; // Xóa highlight key sau khi hoàn tất
+            highlightedBucketIndex = null;
+            isProcessing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+
+    // --- Utils ---
+    private void ShowNotification(NotificationSeverity severity, string message, int duration = 4000)
+    {
+        RadzenNotificationService?.Notify(new NotificationMessage { Severity = severity, Summary = message, Duration = duration });
+    }
+}

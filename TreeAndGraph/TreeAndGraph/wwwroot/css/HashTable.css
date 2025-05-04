@@ -1,0 +1,275 @@
+﻿/* === Biến Màu (Color Variables) === */
+:root {
+    --hashtable-bg: #f8f9fa; /* Light gray background */
+    --slot-border: #ced4da; /* Gray border */
+    --slot-bg-empty: #e9ecef; /* Lighter gray for empty */
+    --slot-text-empty: #6c757d; /* Gray text for empty */
+    --slot-bg-occupied: #e0f7fa; /* Light cyan for occupied */
+    --slot-text-occupied: #0077cc; /* Darker cyan text */
+    --slot-bg-deleted: #ffebee; /* Light pink for deleted */
+    --slot-text-deleted: #c62828; /* Darker red text */
+    --slot-bg-probing: #fff9c4; /* Light yellow for probing */
+    --slot-border-probing: #fbc02d; /* Darker yellow border */
+    --slot-bg-success: #dcedc8; /* Light green for success */
+    --slot-border-success: #689f38; /* Darker green border */
+    --slot-bg-fail: #ffcdd2; /* Light red for fail */
+    --slot-border-fail: #d32f2f; /* Darker red border */
+    --slot-bg-selected: #b3e5fc; /* Light blue for selected */
+    --log-bg: #ffffff;
+    --log-border: #e0e0e0;
+    --log-text-info: #0277bd;
+    --log-text-probing: #ff8f00;
+    --log-text-collision: #d84315;
+    --log-text-success: #388e3c;
+    --log-text-error: #c62828;
+}
+
+/* === Container Bảng Băm === */
+.hash-table-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px; /* Tăng khoảng cách một chút */
+    padding: 20px;
+    background-color: var(--hashtable-bg);
+    border: 1px solid var(--slot-border);
+    border-radius: 8px; /* Bo góc nhiều hơn */
+    min-height: 100px;
+    align-items: stretch; /* Các ô sẽ có chiều cao bằng nhau */
+}
+
+/* === Ô (Slot) Bảng Băm === */
+.hash-slot {
+    border: 1px solid var(--slot-border);
+    min-width: 100px; /* Rộng hơn để chứa key-value */
+    height: auto; /* Chiều cao tự động theo nội dung */
+    min-height: 80px; /* Chiều cao tối thiểu */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between; /* Phân bố không gian */
+    background-color: var(--slot-bg-empty);
+    color: var(--slot-text-empty);
+    border-radius: 6px;
+    font-size: 0.85em;
+    position: relative;
+    text-align: center;
+    transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease;
+    padding: 5px;
+    box-sizing: border-box;
+    cursor: pointer; /* Con trỏ chuột thay đổi khi hover */
+    overflow: hidden; /* Ẩn nội dung tràn */
+}
+
+    .hash-slot:hover {
+        transform: translateY(-2px); /* Hiệu ứng nhấc lên khi hover */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+.slot-index {
+    position: absolute;
+    top: 3px;
+    left: 5px;
+    font-size: 0.75em;
+    color: #777;
+    font-weight: bold;
+}
+
+.slot-content {
+    margin-top: 15px; /* Khoảng cách với index */
+    margin-bottom: 5px;
+    width: 100%;
+}
+
+.slot-key, .slot-value-display { /* Đổi tên từ slot-value */
+    display: block; /* Hiển thị trên dòng riêng */
+    font-size: 0.9em;
+    font-weight: normal;
+    padding: 2px 4px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: 3px;
+    margin-top: 3px;
+}
+
+.slot-key {
+    font-weight: bold;
+    background-color: rgba(0, 0, 0, 0.05); /* Nền nhẹ cho key */
+}
+
+.slot-value-display {
+    background-color: rgba(0, 0, 0, 0.02); /* Nền nhẹ hơn cho value */
+}
+
+
+/* === Trạng thái Ô === */
+.hash-slot.empty {
+    background-color: var(--slot-bg-empty);
+    color: var(--slot-text-empty);
+}
+
+    .hash-slot.empty .slot-key,
+    .hash-slot.empty .slot-value-display {
+        visibility: hidden; /* Ẩn key/value khi trống */
+    }
+
+    .hash-slot.empty::after { /* Hiển thị chữ "Trống" */
+        content: "Trống";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-style: italic;
+    }
+
+
+.hash-slot.deleted {
+    background-color: var(--slot-bg-deleted);
+    color: var(--slot-text-deleted);
+    /* text-decoration: line-through; */ /* Không gạch ngang nữa */
+}
+
+    .hash-slot.deleted .slot-key,
+    .hash-slot.deleted .slot-value-display {
+        opacity: 0.6; /* Làm mờ key/value khi đã xóa */
+        text-decoration: line-through;
+    }
+
+    .hash-slot.deleted::after { /* Hiển thị chữ "Đã xóa" */
+        content: "Đã xóa";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-style: italic;
+        opacity: 0.8;
+    }
+
+.hash-slot.occupied {
+    background-color: var(--slot-bg-occupied);
+    color: var(--slot-text-occupied);
+}
+
+/* === Trạng thái Hoạt động === */
+.hash-slot.probing {
+    background-color: var(--slot-bg-probing);
+    border: 2px solid var(--slot-border-probing);
+    box-shadow: 0 0 8px var(--slot-border-probing); /* Thêm shadow */
+}
+
+.hash-slot.success {
+    background-color: var(--slot-bg-success);
+    border: 2px solid var(--slot-border-success);
+    animation: pulse-success 0.6s 2; /* Animation mới */
+}
+
+.hash-slot.fail {
+    background-color: var(--slot-bg-fail);
+    border: 2px solid var(--slot-border-fail);
+    animation: shake-fail 0.5s 1; /* Animation mới */
+}
+
+.hash-slot.selected {
+    border: 2px solid #0277bd; /* Viền xanh dương đậm khi chọn */
+    background-color: var(--slot-bg-selected);
+}
+
+
+/* === Animations === */
+@keyframes pulse-success {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 rgba(104, 159, 56, 0.4);
+    }
+
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 10px rgba(104, 159, 56, 0.7);
+    }
+
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 rgba(104, 159, 56, 0.4);
+    }
+}
+
+@keyframes shake-fail {
+    10%, 90% {
+        transform: translate3d(-1px, 0, 0);
+    }
+
+    20%, 80% {
+        transform: translate3d(2px, 0, 0);
+    }
+
+    30%, 50%, 70% {
+        transform: translate3d(-4px, 0, 0);
+    }
+
+    40%, 60% {
+        transform: translate3d(4px, 0, 0);
+    }
+}
+
+/* --- Animation cho JS --- */
+.flash-effect {
+    animation: flash-animation 0.5s ease-out 1;
+}
+
+@keyframes flash-animation {
+    0% {
+        background-color: var(--slot-bg-probing);
+        transform: scale(1.05);
+    }
+
+    100% {
+        background-color: inherit;
+        transform: scale(1);
+    }
+    /* Quay về màu nền gốc */
+}
+
+
+/* === Nhật ký Thao tác === */
+.operation-log {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: var(--log-bg);
+    border: 1px solid var(--log-border);
+    border-radius: 6px;
+    min-height: 60px;
+    max-height: 200px; /* Tăng chiều cao tối đa */
+    overflow-y: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.95em;
+    line-height: 1.5;
+}
+
+.log-entry {
+    margin-bottom: 5px;
+    padding: 2px 0;
+}
+
+    .log-entry.probing {
+        color: var(--log-text-probing);
+    }
+
+    .log-entry.collision {
+        color: var(--log-text-collision);
+        font-weight: bold;
+    }
+
+    .log-entry.success {
+        color: var(--log-text-success);
+        font-weight: bold;
+    }
+
+    .log-entry.info {
+        color: var(--log-text-info);
+    }
+
+    .log-entry.error {
+        color: var(--log-text-error);
+        font-weight: bold;
+    }

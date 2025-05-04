@@ -1,0 +1,387 @@
+﻿@page "/stack-queue-list-visualization" // Changed route
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@using Radzen
+
+@* Reference the new CSS file *@
+<link href="css/dataStructureVisualizer.css" rel="stylesheet" />
+ <link href="css/style.css" rel="stylesheet" /> 
+
+<PageTitle>Stack, Queue, List Visualization</PageTitle>
+
+<RadzenCard Style="margin-bottom: 20px; background-color: #e9ecef;">
+    @* Light background for intro card *@
+    <RadzenHeading Size="H1" Text="Mô phỏng Stack, Queue, List" Class="rz-text-center rz-mb-4" style="color: #17a2b8; font-weight: bold;" /> @* Adjusted color *@
+
+    <RadzenRow Gutter="2rem">
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard>
+                <RadzenHeading Size="H4" Text="Stack (Ngăn xếp)" Class="rz-text-center rz-mb-2" />
+                <RadzenText TextStyle="TextStyle.Body1">
+                    Hoạt động theo nguyên tắc <strong>LIFO (Last-In, First-Out)</strong> - Phần tử vào sau cùng sẽ ra trước tiên.
+                    Giống như một chồng đĩa, bạn chỉ có thể thêm (Push) hoặc lấy (Pop) đĩa ở trên cùng.
+                </RadzenText>
+            </RadzenCard>
+        </RadzenColumn>
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard>
+                <RadzenHeading Size="H4" Text="Queue (Hàng đợi)" Class="rz-text-center rz-mb-2" />
+                <RadzenText TextStyle="TextStyle.Body1">
+                    Hoạt động theo nguyên tắc <strong>FIFO (First-In, First-Out)</strong> - Phần tử vào trước sẽ ra trước.
+                    Giống như một hàng người xếp hàng, người đến trước (Enqueue) sẽ được phục vụ trước (Dequeue).
+                </RadzenText>
+            </RadzenCard>
+        </RadzenColumn>
+        <RadzenColumn Size="12" SizeMD="4">
+            <RadzenCard>
+                <RadzenHeading Size="H4" Text="List (Danh sách)" Class="rz-text-center rz-mb-2" />
+                <RadzenText TextStyle="TextStyle.Body1">
+                    Cho phép lưu trữ một tập hợp các phần tử theo thứ tự và truy cập chúng qua chỉ số (index).
+                    Bạn có thể thêm, xóa, sửa đổi phần tử ở bất kỳ vị trí nào trong danh sách.
+                </RadzenText>
+            </RadzenCard>
+        </RadzenColumn>
+    </RadzenRow>
+</RadzenCard>
+
+@* --- STACK SECTION --- *@
+<RadzenFieldset Text="1. Stack Visualization" AllowCollapse="true" class="visualization-section">
+    <HeaderTemplate>
+        <RadzenHeading Size="H3" Text="1. Stack Visualization" Class="rz-mb-0" />
+    </HeaderTemplate>
+    <ChildContent>
+        <RadzenText TextStyle="TextStyle.Body1" Class="rz-mb-3">
+            Mô phỏng hoạt động Push (thêm vào đỉnh) và Pop (lấy ra từ đỉnh) của Stack.
+        </RadzenText>
+        <RadzenCard class="controls-area">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.End">
+                <RadzenFormField Text="Giá trị Push" Variant="Variant.Outlined" Style="max-width: 180px;">
+                    <RadzenNumeric TValue="int?" @bind-Value="stackPushValue" Placeholder="Nhập số" @onkeyup="HandleStackKeyup" />
+                </RadzenFormField>
+                <RadzenButton type="button" Text="Push" Click="PushStack" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Primary" Disabled="isStackLoading || stackPushValue == null" />
+                <RadzenButton type="button" Text="Pop" Click="PopStack" Icon="remove_circle_outline" ButtonStyle="ButtonStyle.Warning" Disabled="isStackLoading || stackData.Count == 0" />
+                <RadzenButton type="button" Text="Reset" Click="ResetStack" Icon="refresh" ButtonStyle="ButtonStyle.Secondary" Disabled="isStackLoading" />
+            </RadzenStack>
+            @if (!string.IsNullOrEmpty(stackMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="mt-3" Role="alert">
+                    @stackMessage
+                </RadzenAlert>
+            }
+        </RadzenCard>
+
+        @if (isStackLoading)
+        {
+            <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="margin-bottom: 10px;" />
+        }
+
+        <div class="display-area">
+            <div id="stack-container" class="stack-container"></div>
+            <div id="stack-info" class="info-box" aria-live="polite">
+                <h5>Thông tin Stack</h5>
+                <p><span class="label">Top:</span> <span class="value @(stackTopValue == null ? "empty" : "")">@(stackTopValue?.ToString() ?? "N/A")</span></p>
+                <p><span class="label">Length:</span> <span class="value @(stackCount == 0 ? "empty" : "")">@stackCount</span></p>
+            </div>
+        </div>
+    </ChildContent>
+</RadzenFieldset>
+
+@* --- QUEUE SECTION --- *@
+<RadzenFieldset Text="2. Queue Visualization" AllowCollapse="true" Collapsed="true" class="visualization-section">
+    <HeaderTemplate>
+        <RadzenHeading Size="H3" Text="2. Queue Visualization" Class="rz-mb-0" />
+    </HeaderTemplate>
+    <ChildContent>
+        <RadzenText TextStyle="TextStyle.Body1" Class="rz-mb-3">
+            Mô phỏng hoạt động Enqueue (thêm vào cuối) và Dequeue (lấy ra từ đầu) của Queue.
+        </RadzenText>
+        <RadzenCard class="controls-area">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.End">
+                <RadzenFormField Text="Giá trị Enqueue" Variant="Variant.Outlined" Style="max-width: 180px;">
+                    <RadzenNumeric TValue="int?" @bind-Value="queueEnqueueValue" Placeholder="Nhập số" @onkeyup="HandleQueueKeyup" />
+                </RadzenFormField>
+                <RadzenButton type="button" Text="Enqueue" Click="EnqueueQueue" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Disabled="isQueueLoading || queueEnqueueValue == null" />
+                <RadzenButton type="button" Text="Dequeue" Click="DequeueQueue" Icon="remove_circle_outline" ButtonStyle="ButtonStyle.Info" Disabled="isQueueLoading || queueData.Count == 0" />
+                <RadzenButton type="button" Text="Reset" Click="ResetQueue" Icon="refresh" ButtonStyle="ButtonStyle.Secondary" Disabled="isQueueLoading" />
+            </RadzenStack>
+            @if (!string.IsNullOrEmpty(queueMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="mt-3" Role="alert">
+                    @queueMessage
+                </RadzenAlert>
+            }
+        </RadzenCard>
+
+        @if (isQueueLoading)
+        {
+            <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="margin-bottom: 10px;" />
+        }
+
+        <div class="display-area">
+            <div id="queue-container" class="queue-container"></div>
+            <div id="queue-info" class="info-box" aria-live="polite">
+                <h5>Thông tin Queue</h5>
+                <p><span class="label">Front:</span> <span class="value @(queueFrontValue == null ? "empty" : "")">@(queueFrontValue?.ToString() ?? "N/A")</span></p>
+                @* Rear không dễ lấy trực tiếp từ Queue<T> mà không duyệt, có thể bỏ qua hoặc dùng Linq LastOrDefault nếu cần *@
+                @* <p><span class="label">Rear:</span> <span class="value @(queueRearValue == null ? "empty" : "")">@(queueRearValue?.ToString() ?? "N/A")</span></p> *@
+                <p><span class="label">Length:</span> <span class="value @(queueCount == 0 ? "empty" : "")">@queueCount</span></p>
+            </div>
+        </div>
+    </ChildContent>
+</RadzenFieldset>
+
+@* --- LIST SECTION (Simplified) --- *@
+<RadzenFieldset Text="3. List Visualization" AllowCollapse="true" Collapsed="true" class="visualization-section">
+    <HeaderTemplate>
+        <RadzenHeading Size="H3" Text="3. List Visualization" Class="rz-mb-0" />
+    </HeaderTemplate>
+    <ChildContent>
+        <RadzenText TextStyle="TextStyle.Body1" Class="rz-mb-3">
+            Mô phỏng hoạt động Add (thêm vào cuối) và Remove At Index (xóa tại vị trí) của List.
+        </RadzenText>
+        <RadzenCard class="controls-area">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.End" Wrap="FlexWrap.Wrap">
+                @* Allow wrapping for smaller screens *@
+                <RadzenFormField Text="Giá trị Add" Variant="Variant.Outlined" Style="max-width: 180px;">
+                    <RadzenNumeric TValue="int?" @bind-Value="listAddValue" Placeholder="Nhập số" @onkeyup="HandleListAddKeyup" />
+                </RadzenFormField>
+                <RadzenButton type="button" Text="Add (End)" Click="AddToListEnd" Icon="add" ButtonStyle="ButtonStyle.Primary" Disabled="isListLoading || listAddValue == null" />
+
+                <RadzenFormField Text="Index để Remove" Variant="Variant.Outlined" Style="max-width: 180px;">
+                    @* Đặt Min=0 *@
+                    <RadzenNumeric TValue="int?" @bind-Value="listRemoveIndex" Min="0" Placeholder="Nhập index" />
+                </RadzenFormField>
+                <RadzenButton type="button" Text="Remove At Index" Click="RemoveFromListByIndex" Icon="delete" ButtonStyle="ButtonStyle.Danger" Disabled="isListLoading || listRemoveIndex == null || listData.Count == 0 || listRemoveIndex >= listData.Count" />
+
+                <RadzenButton type="button" Text="Reset" Click="ResetList" Icon="refresh" ButtonStyle="ButtonStyle.Secondary" Disabled="isListLoading" />
+            </RadzenStack>
+            @if (!string.IsNullOrEmpty(listMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="mt-3" Role="alert">
+                    @listMessage
+                </RadzenAlert>
+            }
+        </RadzenCard>
+
+        @if (isListLoading)
+        {
+            <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="margin-bottom: 10px;" />
+        }
+
+        <div class="display-area">
+            <div id="list-container" class="list-container"></div>
+            <div id="list-info" class="info-box" aria-live="polite">
+                <h5>Thông tin List</h5>
+                <p><span class="label">Length:</span> <span class="value @(listData.Count == 0 ? "empty" : "")">@listData.Count</span></p>
+                @* Hiển thị các phần tử (có thể dài) *@
+                <p><span class="label">Items:</span> <span class="value @(listData.Count == 0 ? "empty" : "")" style="font-weight:normal;">@(listData.Count > 0 ? string.Join(", ", listData) : "N/A")</span></p>
+            </div>
+        </div>
+    </ChildContent>
+</RadzenFieldset>
+
+
+@code {
+    // --- State for Stack ---
+    private Stack<int> stackData = new Stack<int>();
+    private int? stackPushValue;
+    private int? stackTopValue;
+    private int stackCount = 0;
+    private string stackMessage = "";
+    private bool isStackLoading = false;
+    private const string stackContainerId = "stack-container";
+
+    // --- State for Queue ---
+    private Queue<int> queueData = new Queue<int>();
+    private int? queueEnqueueValue;
+    private int? queueFrontValue;
+    // private int? queueRearValue; // Harder to get efficiently
+    private int queueCount = 0;
+    private string queueMessage = "";
+    private bool isQueueLoading = false;
+    private const string queueContainerId = "queue-container";
+
+    // --- State for List ---
+    private List<int> listData = new List<int>();
+    private int? listAddValue;
+    private int? listRemoveIndex;
+    // Add state for insert if implementing later
+    // private int? listInsertValue;
+    // private int? listInsertIndex;
+    private string listMessage = "";
+    private bool isListLoading = false;
+    private const string listContainerId = "list-container";
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Clear all visualizers initially
+            await jsClear(stackContainerId);
+            UpdateStackDisplay();
+            await jsClear(queueContainerId);
+            UpdateQueueDisplay();
+            await jsClear(listContainerId);
+            UpdateListDisplay();
+            StateHasChanged();
+        }
+    }
+
+    // --- Stack Methods ---
+    private async Task HandleStackKeyup(KeyboardEventArgs args)
+    {
+        if (args.Code == "Enter" || args.Code == "NumpadEnter")
+        {
+            if (!isStackLoading && stackPushValue != null) await PushStack();
+        }
+    }
+    private async Task PushStack()
+    {
+        stackMessage = "";
+        if (stackPushValue == null) { stackMessage = "Nhập giá trị số nguyên."; StateHasChanged(); return; }
+        int value = stackPushValue.Value;
+        stackData.Push(value);
+        UpdateStackDisplay();
+        await JS.InvokeVoidAsync("jsStackPush", stackContainerId, value);
+        stackPushValue = null;
+        StateHasChanged();
+    }
+    private async Task PopStack()
+    {
+        stackMessage = "";
+        if (stackData.Count == 0) { stackMessage = "Stack rỗng."; StateHasChanged(); return; }
+        isStackLoading = true; StateHasChanged();
+        await JS.InvokeVoidAsync("jsStackPop", stackContainerId);
+        if (stackData.TryPop(out int poppedValue)) { stackMessage = $"Đã Pop: {poppedValue}"; }
+        else { stackMessage = "Lỗi Pop."; }
+        UpdateStackDisplay();
+        isStackLoading = false; StateHasChanged();
+    }
+    private async Task ResetStack()
+    {
+        isStackLoading = true; stackMessage = ""; stackPushValue = null; StateHasChanged();
+        stackData.Clear();
+        UpdateStackDisplay();
+        await jsClear(stackContainerId);
+        stackMessage = "Đã reset Stack."; isStackLoading = false; StateHasChanged();
+    }
+    private void UpdateStackDisplay()
+    {
+        stackTopValue = stackData.TryPeek(out int top) ? top : (int?)null;
+        stackCount = stackData.Count;
+    }
+
+    // --- Queue Methods ---
+    private async Task HandleQueueKeyup(KeyboardEventArgs args)
+    {
+        if (args.Code == "Enter" || args.Code == "NumpadEnter")
+        {
+            if (!isQueueLoading && queueEnqueueValue != null) await EnqueueQueue();
+        }
+    }
+    private async Task EnqueueQueue()
+    {
+        queueMessage = "";
+        if (queueEnqueueValue == null) { queueMessage = "Nhập giá trị số nguyên."; StateHasChanged(); return; }
+        int value = queueEnqueueValue.Value;
+        queueData.Enqueue(value);
+        UpdateQueueDisplay();
+        await JS.InvokeVoidAsync("jsQueueEnqueue", queueContainerId, value);
+        queueEnqueueValue = null;
+        StateHasChanged();
+    }
+    private async Task DequeueQueue()
+    {
+        queueMessage = "";
+        if (queueData.Count == 0) { queueMessage = "Queue rỗng."; StateHasChanged(); return; }
+        isQueueLoading = true; StateHasChanged();
+        await JS.InvokeVoidAsync("jsQueueDequeue", queueContainerId);
+        if (queueData.TryDequeue(out int dequeuedValue)) { queueMessage = $"Đã Dequeue: {dequeuedValue}"; }
+        else { queueMessage = "Lỗi Dequeue."; }
+        UpdateQueueDisplay();
+        isQueueLoading = false; StateHasChanged();
+    }
+    private async Task ResetQueue()
+    {
+        isQueueLoading = true; queueMessage = ""; queueEnqueueValue = null; StateHasChanged();
+        queueData.Clear();
+        UpdateQueueDisplay();
+        await jsClear(queueContainerId);
+        queueMessage = "Đã reset Queue."; isQueueLoading = false; StateHasChanged();
+    }
+    private void UpdateQueueDisplay()
+    {
+        queueFrontValue = queueData.TryPeek(out int front) ? front : (int?)null;
+        queueCount = queueData.Count;
+        // queueRearValue = queueData.LastOrDefault(); // Requires System.Linq, less efficient
+    }
+
+
+    // --- List Methods ---
+    private async Task HandleListAddKeyup(KeyboardEventArgs args)
+    {
+        if (args.Code == "Enter" || args.Code == "NumpadEnter")
+        {
+            if (!isListLoading && listAddValue != null) await AddToListEnd();
+        }
+    }
+    private async Task AddToListEnd()
+    {
+        listMessage = "";
+        if (listAddValue == null) { listMessage = "Nhập giá trị số nguyên."; StateHasChanged(); return; }
+        int value = listAddValue.Value;
+        listData.Add(value);
+        UpdateListDisplay(); // Update display (length, items list)
+        await JS.InvokeVoidAsync("jsListAdd", listContainerId, value);
+        listAddValue = null;
+        StateHasChanged();
+    }
+    private async Task RemoveFromListByIndex()
+    {
+        listMessage = "";
+        if (listRemoveIndex == null) { listMessage = "Nhập index để xóa."; StateHasChanged(); return; }
+        int index = listRemoveIndex.Value;
+
+        if (index < 0 || index >= listData.Count) { listMessage = $"Index không hợp lệ (phải từ 0 đến {listData.Count - 1})."; StateHasChanged(); return; }
+
+        isListLoading = true; StateHasChanged();
+
+        int valueToRemove = listData[index]; // Get value before removing for message
+
+        // Call JS to remove visually first
+        await JS.InvokeVoidAsync("jsListRemove", listContainerId, index);
+
+        // Remove from C# list
+        listData.RemoveAt(index);
+        listMessage = $"Đã xóa giá trị {valueToRemove} tại index {index}.";
+        UpdateListDisplay();
+
+        listRemoveIndex = null; // Clear index input
+        isListLoading = false; StateHasChanged();
+    }
+    private async Task ResetList()
+    {
+        isListLoading = true; listMessage = ""; listAddValue = null; listRemoveIndex = null; StateHasChanged();
+        listData.Clear();
+        UpdateListDisplay();
+        await jsClear(listContainerId);
+        listMessage = "Đã reset List."; isListLoading = false; StateHasChanged();
+    }
+    private void UpdateListDisplay()
+    {
+        // Chỉ cần cập nhật lại StateHasChanged() để Blazor render lại Length và danh sách items
+        // Không có biến riêng như top/front
+    }
+
+
+    // --- Generic JS Clear Call ---
+    private async Task jsClear(string containerId)
+    {
+        // Cần phân biệt hàm clear cho từng loại nếu logic khác nhau,
+        // nhưng hiện tại innerHTML = '' là đủ cho cả 3.
+        if (containerId == stackContainerId) await JS.InvokeVoidAsync("jsStackClear", containerId);
+        else if (containerId == queueContainerId) await JS.InvokeVoidAsync("jsQueueClear", containerId);
+        else if (containerId == listContainerId) await JS.InvokeVoidAsync("jsListClear", containerId);
+    }
+}

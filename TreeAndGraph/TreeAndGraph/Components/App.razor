@@ -1,0 +1,84 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="TreeAndGraph.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+
+    @* Stack, Queue, List *@
+    <link href="css/dataStructureVisualizer.css" rel="stylesheet" />
+
+
+    @* Sort *@
+    <link href="css/sortingVisualizer.css" rel="stylesheet" />
+    
+    @* Graph *@
+    <link href="css/graph-visualizer.css" rel="stylesheet" />
+
+    @* Genealogy *@
+    <link href="css/family-tree.css" rel="stylesheet" />
+
+    @* Heap sort *@
+    <link href="css/heapsort.css" rel="stylesheet" />
+    <link href="https://unpkg.com/vis-network/styles/vis-network.css" rel="stylesheet" />
+    <link href="https://unpkg.com/vis-network/styles/vis-network.min.css" rel="stylesheet" type="text/css" />
+   
+    @* Tree anđ BST *@
+    <link href="css/tree-style.css" rel="stylesheet">
+
+    @* Hash Tabe *@
+    <link href="css/HashTable.css" rel="stylesheet" />
+    <link href="css/SeparateChaining.css" rel="stylesheet" />
+
+    
+    <HeadOutlet @rendermode="InteractiveServer" />
+    <RadzenTheme Theme="material" @rendermode="InteractiveServer" />
+</head>
+
+<body>
+    <Routes @rendermode="InteractiveServer" />
+
+    @* <script src="js/d3.v7.min.js"></script> *@
+
+    <script src="_framework/blazor.web.js"></script>
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+
+    @* Stack,queue,list *@
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js?v=@(typeof(Radzen.Colors).Assembly.GetName().Version)"></script>
+    <script src="js/dataStructureVisualizer.js"></script>
+    
+    @* Sort *@
+    <script src="js/sortingVisualizer.js"></script>
+    
+    @* Graph *@
+    @* <script src="js/graph-visualizer.js"></script>  *@
+
+    @* Genealogy *@
+    <script src="js/simpleGenealogyVisualizer.js"></script>
+
+
+    @* Heapsort *@
+    <script src="js/heapsortVisualizer.js"></script>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+    @* BST *@
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script src="js/bstVisualizer.js"></script>
+    <script src="js/tree-interop.js"></script>
+
+
+    @* hash table *@
+    <script src="js/hashtableInterop.js"></script>
+
+
+   
+
+</body>
+
+</html>

@@ -1,0 +1,575 @@
+﻿@page "/tree-visualizer"
+@rendermode InteractiveServer
+@inject ITreeService TreeService
+@inject IJSRuntime JSRuntime
+@inject Radzen.NotificationService NotificationService
+
+@using System.Globalization
+@* >>> KIỂM TRA LẠI NAMESPACE NÀY <<< *@
+@using TreeAndGraph.Models.TreeAndBST
+@* >>> KIỂM TRA LẠI NAMESPACE NÀY <<< *@
+@using TreeAndGraph.Services.TreeAndBSTService
+@* Nếu Service và Model nằm trực tiếp trong thư mục Services và Models, bạn nên dùng:
+   @using TreeAndGraph.Models
+   @using TreeAndGraph.Services
+   Và xóa dòng using TreeAndGraph.Services.TreeAndBSTService nếu không tồn tại
+*@
+@using System.Text
+
+<PageTitle>Tree and BST Visualizer</PageTitle>
+
+@* Container chính với max-width và căn giữa *@
+<div class="tree-visualizer-container" style="max-width: 1600px; margin: 0 auto; padding: 1rem;">
+
+    <h1>Cây và Cây Nhị Phân Tìm Kiếm</h1>
+
+    @* Phần Lý Thuyết (Không đổi) *@
+    <RadzenFieldset Text="Lý Thuyết Cơ Bản" AllowCollapse="true" Collapsed="true">
+        <RadzenTabs>
+            <Tabs>
+                <RadzenTabsItem Text="Cây (Tree)">
+                     <p>Trong khoa học máy tính, <strong>Cây (Tree)</strong> là một cấu trúc dữ liệu phi tuyến tính, phân cấp...</p>
+                     @( (MarkupString) @"<strong>Các khái niệm chính:</strong><ul><li>...</li></ul>" ) @* Rút gọn để dễ đọc *@
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Cây Nhị Phân & BST">
+                    <p><strong>Cây Nhị Phân (Binary Tree):</strong> Là cây mà mỗi nút có tối đa hai con...</p>
+                    <p><strong>Cây Nhị Phân Tìm Kiếm (Binary Search Tree - BST):</strong> Là cây nhị phân có tính chất đặc biệt:</p>
+                     @( (MarkupString) @"<ul><li>...</li></ul>" ) @* Rút gọn để dễ đọc *@
+                 </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+    </RadzenFieldset>
+
+
+    @* Phần Cây Tổng Quát / Nhị Phân *@
+    <RadzenFieldset Text="Cây Tổng Quát / Nhị Phân" Icon="account_tree" AllowCollapse="true">
+        <RadzenStack Gap="1.5rem">
+            @* -- Input Controls (Không đổi) -- *@
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
+                 <RadzenLabel Text="Loại cây:" />
+                 <RadzenDropDown @bind-Value="GeneralTreeType" Data="@(new[] { "Tổng quát", "Nhị phân" })" Style="width: 150px;" Change="@ResetGeneralTree" />
+                 <RadzenLabel Text="Kiểu nhập:" />
+                 <RadzenDropDown @bind-Value="GeneralInputType" Data="@(new[] { "Danh sách cha-con", "Chuỗi lồng nhau", "Tạo tự động" })" Style="width: 200px;" Change="@ResetGeneralTree" />
+            </RadzenStack>
+            @if (GeneralInputType == "Danh sách cha-con") { <RadzenTextArea @bind-Value="GeneralParentChildInput" Rows="5" Placeholder="A -> B&#10;A -> C&#10;B -> D" Style="width: 100%; max-width: 400px;" /> <RadzenButton Click="GenerateGeneralTreeFromParentChild" Text="Tạo Cây" Icon="check_circle" ButtonStyle="ButtonStyle.Success" /> }
+            else if (GeneralInputType == "Chuỗi lồng nhau") { <RadzenTextArea @bind-Value="GeneralNestedInput" Rows="3" Placeholder="A(B(D),C)" Style="width: 100%; max-width: 400px;" /> <RadzenButton Click="GenerateGeneralTreeFromNested" Text="Tạo Cây" Icon="check_circle" ButtonStyle="ButtonStyle.Success" /> }
+            else { <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center"> <RadzenButton Click="GenerateRandomGeneralTree" Text="Tạo Cây Ngẫu Nhiên" Icon="casino" ButtonStyle="ButtonStyle.Primary" /> <RadzenNumeric TValue="int" @bind-Value="RandomMinNodes" Min="2" Max="50" Placeholder="Min Nodes" /> <RadzenNumeric TValue="int" @bind-Value="RandomMaxNodes" Min="2" Max="50" Placeholder="Max Nodes" /> <RadzenNumeric TValue="int" @bind-Value="RandomMaxDepth" Min="1" Max="10" Placeholder="Max Depth" /> </RadzenStack> }
+            <RadzenAlert Visible="@GeneralErrors.Any()" AlertStyle="AlertStyle.Danger" Shade="Shade.Lighter" Title="Lỗi Tạo Cây"> <ul class="error-list"> @foreach(var err in GeneralErrors) { <li>@err</li> } </ul> </RadzenAlert>
+
+             @* -- Visualization & Traversal -- *@
+             @if (GeneralTreeRoot != null && GeneralTreeLayout != null && GeneralTreeLayout.NodePositions.Any())
+             {
+                 @* Bố cục Flex và RadzenCard đã được thêm ở bước trước, giữ nguyên *@
+                 <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start;">
+                     @* SVG Container trong Card *@
+                     <RadzenCard style="flex: 3 1 500px; min-height: 450px; padding: 0; overflow: hidden;">
+                         <div class="tree-svg-container" style="width: 100%; height: 100%; overflow: auto;">
+                             @* SVG với sự kiện kéo thả và kích thước động *@
+                             <svg @ref="generalTreeSvgContainer" class="tree-svg-element"
+                                  width="@GeneralTreeLayout.Width.ToString(CultureInfo.InvariantCulture)"
+                                  height="@GeneralTreeLayout.Height.ToString(CultureInfo.InvariantCulture)"
+                                  @onmousemove="HandleGeneralMouseMove"
+                                  @onmouseup="HandleGeneralMouseUpOrLeave"
+                                  @onmouseleave="HandleGeneralMouseUpOrLeave"
+                                  style="@(GeneralDraggingVertexId != null ? "cursor: grabbing;" : "cursor: default;")">
+                                  @* Edges *@
+                                  @foreach (var edge in GeneralTreeLayout.Edges) {
+                                       if (GeneralTreeLayout.NodePositions.TryGetValue(edge.FromId, out var pos1) && GeneralTreeLayout.NodePositions.TryGetValue(edge.ToId, out var pos2)) {
+                                           <line class="tree-edge @(GeneralTraversalEdges.Contains(edge) ? "highlight-traversed" : "")"
+                                                 x1="@pos1.X.ToString(CultureInfo.InvariantCulture)" y1="@pos1.Y.ToString(CultureInfo.InvariantCulture)"
+                                                 x2="@pos2.X.ToString(CultureInfo.InvariantCulture)" y2="@pos2.Y.ToString(CultureInfo.InvariantCulture)" marker-end="url(#gt-arrow)" />
+                                       }
+                                  }
+                                  @* Nodes *@
+                                  @foreach (var kvp in GeneralTreeLayout.NodePositions) {
+                                       var nodeId = kvp.Key; var pos = kvp.Value;
+                                       var nodeData = GeneralNodeMap.TryGetValue(nodeId, out var node) ? node.Data : "?";
+                                       var nodeClass = "tree-node";
+                                       if(nodeId == GeneralCurrentTraversalNodeId) nodeClass += " highlight-current"; else if(GeneralTraversalResultIds.Contains(nodeId)) nodeClass += " highlight-visited";
+                                       if(nodeId == GeneralDraggingVertexId) nodeClass += " dragging";
+                                       <g class="@nodeClass"
+                                          @onmousedown="@(async (e) => await HandleGeneralMouseDown(nodeId, e))" @onmousedown:stopPropagation
+                                          style="@(GeneralDraggingVertexId == nodeId ? "cursor: grabbing;" : "cursor: grab;")">
+                                           <circle cx="@pos.X.ToString(CultureInfo.InvariantCulture)" cy="@pos.Y.ToString(CultureInfo.InvariantCulture)" r="20" fill="#e0f7fa" />
+                                           <text x="@pos.X.ToString(CultureInfo.InvariantCulture)" y="@pos.Y.ToString(CultureInfo.InvariantCulture)">@nodeData</text>
+                                       </g>
+                                  }
+                                   <defs> <marker id="gt-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#adb5bd"/></marker> </defs>
+                             </svg>
+                         </div>
+                     </RadzenCard>
+
+                     @* Traversal Controls trong Card *@
+                     <RadzenCard style="flex: 1 1 280px; min-width: 280px;">
+                         <RadzenStack Gap="1rem">
+                              <RadzenLabel Text="Duyệt cây:" />
+                              <RadzenDropDown @bind-Value="GeneralSelectedTraversal" Data="GeneralTraversalOptions" Style="width: 100%;" />
+                              <RadzenButton Click="PerformGeneralTraversal" Text="Duyệt" Icon="play_arrow" ButtonStyle="ButtonStyle.Info" Disabled="@(GeneralTreeRoot == null)" />
+                               @if (GeneralTraversalResultData.Any()) {
+                                    <RadzenButton Click="ClearGeneralTraversal" Text="Xóa Duyệt" Icon="clear" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"/>
+                                    <RadzenFieldset Text="@($"Kết quả ({GeneralSelectedTraversal})")"> <p style="word-wrap: break-word; font-family: Consolas, monospace;"> @string.Join(" → ", GeneralTraversalResultData) </p> </RadzenFieldset>
+                               }
+                         </RadzenStack>
+                     </RadzenCard>
+                 </div>
+             }
+              else if (GeneralErrors.Count == 0) { <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Lighter">Chưa có cây để hiển thị.</RadzenAlert> }
+        </RadzenStack>
+    </RadzenFieldset>
+
+
+    @* Phần Cây Nhị Phân Tìm Kiếm (BST) *@
+     <RadzenFieldset Text="Cây Nhị Phân Tìm Kiếm (BST)" Icon="mediation" AllowCollapse="true" Collapsed="true">
+          <RadzenStack Gap="1.5rem">
+               @* -- Input Controls (Không đổi) -- *@
+               <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap"> <RadzenTextBox @bind-Value="BstInputNumbers" Placeholder="Nhập số cách nhau bởi dấu phẩy (VD: 50, 30, 70)" Style="flex-grow: 1;" /> <RadzenButton Click="CreateBst" Text="Tạo/Cập nhật BST" Icon="add_circle" ButtonStyle="ButtonStyle.Success" IsBusy="IsBstProcessing" Disabled="IsBstProcessing || IsBstTraversing" /> <RadzenButton Click="ResetBst" Text="Reset BST" Icon="refresh" ButtonStyle="ButtonStyle.Light" Disabled="IsBstProcessing || IsBstTraversing" /> </RadzenStack>
+               <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap"> <RadzenNumeric TValue="int?" @bind-Value="BstNodeValue" Placeholder="Giá trị nút..." /> <RadzenButton Click="InsertBst" Text="Thêm" Icon="add" ButtonStyle="ButtonStyle.Primary" Disabled="@(BstNodeValue == null || IsBstProcessing || IsBstTraversing)" /> <RadzenButton Click="DeleteBst" Text="Xóa" Icon="remove" ButtonStyle="ButtonStyle.Danger" Disabled="@(BstNodeValue == null || BstRoot == null || IsBstProcessing || IsBstTraversing)" /> </RadzenStack>
+               <RadzenAlert Visible="@BstErrors.Any()" AlertStyle="AlertStyle.Danger" Shade="Shade.Lighter" Title="Lỗi BST"> <ul class="error-list"> @foreach(var err in BstErrors) { <li>@err</li> } </ul> </RadzenAlert>
+
+                @* -- Visualization & Traversal -- *@
+                 @if (BstRoot != null && BstLayout != null && BstLayout.NodePositions.Any())
+                 {
+                     @* Bố cục Flex và RadzenCard đã được thêm ở bước trước, giữ nguyên *@
+                     <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start;">
+                          @* SVG Container trong Card *@
+                          <RadzenCard style="flex: 3 1 500px; min-height: 450px; padding: 0; overflow: hidden;">
+                              <div class="tree-svg-container" style="width: 100%; height: 100%; overflow: auto;">
+                                <svg @ref="bstSvgContainer" class="tree-svg-element"
+                                     width="@BstLayout.Width.ToString(CultureInfo.InvariantCulture)"
+                                     height="@BstLayout.Height.ToString(CultureInfo.InvariantCulture)"
+                                     @onmousemove="HandleBstMouseMove" @onmouseup="HandleBstMouseUpOrLeave" @onmouseleave="HandleBstMouseUpOrLeave"
+                                     style="@(BstDraggingVertexId != null ? "cursor: grabbing;" : "cursor: default;")">
+                                      @* Edges *@
+                                      @foreach (var edge in BstLayout.Edges) {
+                                           if (BstLayout.NodePositions.TryGetValue(edge.FromId, out var pos1) && BstLayout.NodePositions.TryGetValue(edge.ToId, out var pos2)) {
+                                               double angle = Math.Atan2(pos2.Y - pos1.Y, pos2.X - pos1.X); double r = 20;
+                                               double x1a = pos1.X + r * Math.Cos(angle); double y1a = pos1.Y + r * Math.Sin(angle);
+                                               double x2a = pos2.X - r * Math.Cos(angle); double y2a = pos2.Y - r * Math.Sin(angle);
+                                               bool isTraversalEdge = BstTraversalEdges.ContainsKey((edge.FromId, edge.ToId));
+                                               <line class="bst-edge @(isTraversalEdge ? "highlight-traversed" : "")"
+                                                     x1="@x1a.ToString(CultureInfo.InvariantCulture)" y1="@y1a.ToString(CultureInfo.InvariantCulture)"
+                                                     x2="@x2a.ToString(CultureInfo.InvariantCulture)" y2="@y2a.ToString(CultureInfo.InvariantCulture)" marker-end="url(#bst-arrow)" />
+                                           }
+                                      }
+                                      @* Nodes *@
+                                       @foreach (var kvp in BstLayout.NodePositions) {
+                                            var nodeId = kvp.Key; var pos = kvp.Value;
+                                            var nodeValueText = BstNodeMap.TryGetValue(nodeId, out var node) ? node.Value.ToString() : "?";
+                                            var nodeClass = "bst-node";
+                                             if(nodeId == BstCurrentTraversalNodeId) nodeClass += " highlight-current"; else if(BstVisitedNodeIds.Contains(nodeId)) nodeClass += " highlight-visited";
+                                             if(nodeId == BstDraggingVertexId) nodeClass += " dragging";
+                                            <g class="@nodeClass"
+                                               @onmousedown="@(async (e) => await HandleBstMouseDown(nodeId, e))" @onmousedown:stopPropagation
+                                               style="@(BstDraggingVertexId == nodeId ? "cursor: grabbing;" : "cursor: grab;")">
+                                                 <circle cx="@pos.X.ToString(CultureInfo.InvariantCulture)" cy="@pos.Y.ToString(CultureInfo.InvariantCulture)" r="20" fill="#cfe2ff" />
+                                                 <text x="@pos.X.ToString(CultureInfo.InvariantCulture)" y="@pos.Y.ToString(CultureInfo.InvariantCulture)">@nodeValueText</text>
+                                            </g>
+                                       }
+                                     <defs> <marker id="bst-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#adb5bd"/></marker> </defs>
+                                </svg>
+                               </div>
+                          </RadzenCard>
+
+                           @* Traversal Controls trong Card *@
+                          <RadzenCard style="flex: 1 1 280px; min-width: 280px;">
+                                <RadzenStack Gap="1rem">
+                                     <RadzenLabel Text="Duyệt cây BST:" />
+                                      <RadzenDropDown @bind-Value="BstSelectedTraversal" Data="BstTraversalOptions" Style="width: 100%;" />
+                                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="10px">
+                                          <RadzenLabel Text="Tốc độ (ms):" />
+                                          <RadzenSlider @bind-Value=@BstTraversalDelay Min="50" Max="1000" Step="50" Style="width: 120px;" Disabled="@IsBstTraversing" />
+                                          <span>@BstTraversalDelay ms</span>
+                                     </RadzenStack>
+                                      <RadzenButton Click="PerformBstTraversalAnimated" Text="Duyệt Động" Icon="play_circle" ButtonStyle="ButtonStyle.Info" Disabled="@(BstRoot == null || IsBstTraversing || IsBstProcessing)" />
+                                      @if (BstTraversalResultValues.Any() || !string.IsNullOrEmpty(BstTraversalTypeDisplay))
+                                      {
+                                           <RadzenButton Click="ClearBstTraversal" Text="Xóa Duyệt" Icon="clear" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Disabled="IsBstTraversing"/>
+                                            @if(IsBstTraversing) { <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="height: 4px;" /> }
+                                            <RadzenFieldset Text="@($"Kết quả ({BstTraversalTypeDisplay})")"> <p style="word-wrap: break-word; font-family: Consolas, monospace;"> @string.Join(" → ", BstTraversalResultValues) </p> </RadzenFieldset>
+                                      }
+                                </RadzenStack>
+                          </RadzenCard>
+                     </div>
+                 }
+                  else if (BstErrors.Count == 0) { <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Lighter">Chưa có cây BST để hiển thị.</RadzenAlert> }
+          </RadzenStack>
+     </RadzenFieldset>
+
+</div> @* End tree-visualizer-container *@
+
+
+@code {
+    // --- General Tree State ---
+    private string GeneralTreeType = "Tổng quát";
+    private string GeneralInputType = "Tạo tự động";
+    private string GeneralParentChildInput = "A -> B\nA -> C\nB -> D\nB -> E\nC -> F";
+    private string GeneralNestedInput = "A(B(D,E),C(F))";
+    private int RandomMinNodes = 5;
+    private int RandomMaxNodes = 12;
+    private int RandomMaxDepth = 4;
+    private TreeNode? GeneralTreeRoot;
+    private TreeLayoutResult<TreeNode>? GeneralTreeLayout;
+    private Dictionary<string, TreeNode> GeneralNodeMap = new();
+    private List<string> GeneralErrors = new();
+    private string GeneralSelectedTraversal = "Pre-order";
+    private List<string> GeneralTraversalOptions = new() { "Pre-order", "In-order", "Post-order", "Level-order" };
+    private List<string> GeneralTraversalResultIds = new();
+    private List<string> GeneralTraversalResultData = new();
+    private HashSet<TreeEdge> GeneralTraversalEdges = new();
+    private string? GeneralCurrentTraversalNodeId;
+    private ElementReference generalTreeSvgContainer;
+    private string? GeneralDraggingVertexId = null;
+    private double GeneralDragOffsetX, GeneralDragOffsetY;
+    private double GeneralSvgOffsetX, GeneralSvgOffsetY;
+
+    // --- BST State ---
+    private string BstInputNumbers = "50, 30, 70, 20, 40, 60, 80";
+    private int? BstNodeValue;
+    private BstNode? BstRoot;
+    private TreeLayoutResult<BstNode>? BstLayout;
+    private Dictionary<string, BstNode> BstNodeMap = new();
+    private List<string> BstErrors = new();
+    private bool IsBstProcessing = false;
+    private string BstSelectedTraversal = "In-order";
+    private List<string> BstTraversalOptions = new() { "Pre-order", "In-order", "Post-order", "Level-order" };
+    private bool IsBstTraversing = false;
+    private int BstTraversalDelay = 400;
+    private string BstTraversalTypeDisplay = "";
+    private List<string> BstTraversalResultValues = new();
+    private HashSet<string> BstVisitedNodeIds = new();
+    private Dictionary<(string, string), bool> BstTraversalEdges = new();
+    private string? BstCurrentTraversalNodeId;
+    private CancellationTokenSource _bstTraversalCts = new();
+    private string? BstDraggingVertexId = null;
+    private double BstDragOffsetX, BstDragOffsetY;
+    private double BstSvgOffsetX, BstSvgOffsetY;
+    private ElementReference bstSvgContainer;
+
+    // --- Lifecycle ---
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+         if (firstRender) {
+               if(BstRoot != null) await UpdateBstSvgOffsets();
+               if(GeneralTreeRoot != null) await UpdateGeneralSvgOffsets();
+         }
+    }
+    public void Dispose() { _bstTraversalCts.Cancel(); _bstTraversalCts.Dispose(); }
+
+    // --- General Tree Methods ---
+    private void ResetGeneralTree() {
+        GeneralTreeRoot = null; GeneralTreeLayout = null; GeneralErrors.Clear();
+        GeneralTraversalResultIds.Clear(); GeneralTraversalResultData.Clear();
+        GeneralNodeMap.Clear(); GeneralTraversalEdges.Clear(); GeneralCurrentTraversalNodeId = null;
+        GeneralDraggingVertexId = null;
+        StateHasChanged();
+    }
+
+    private async Task GenerateGeneralTree(Func<TreeNode?> treeGenerator) // <<< SỬA: Thêm async Task
+    {
+         ResetGeneralTree();
+         bool isBinary = (GeneralTreeType == "Nhị phân");
+         GeneralTreeRoot = treeGenerator();
+
+         if (GeneralTreeRoot != null)
+         {
+              GeneralTreeLayout = TreeService.CalculateTreeLayout(GeneralTreeRoot, isBinary);
+              GeneralNodeMap.Clear();
+              BuildNodeMap(GeneralTreeRoot, GeneralNodeMap);
+              // Cần gọi UpdateGeneralSvgOffsets sau khi layout được tính toán và component đã render ít nhất 1 lần
+              // Tuy nhiên, gọi ở đây có thể xảy ra trước khi SVG render xong. OnAfterRenderAsync là nơi tốt hơn.
+              // await UpdateGeneralSvgOffsets(); // Có thể gọi ở đây nhưng không đảm bảo ElementReference đã sẵn sàng
+         }
+         await InvokeAsync(StateHasChanged); // <<< SỬA: Dùng InvokeAsync
+    }
+
+    // <<< SỬA: Các hàm gọi GenerateGeneralTree cần await >>>
+     private async Task GenerateGeneralTreeFromParentChild() => await GenerateGeneralTree(() => TreeService.ParseParentChildList(GeneralParentChildInput, GeneralTreeType == "Nhị phân", out GeneralErrors));
+     private async Task GenerateGeneralTreeFromNested() => await GenerateGeneralTree(() => TreeService.ParseNestedString(GeneralNestedInput, GeneralTreeType == "Nhị phân", out GeneralErrors));
+     private async Task GenerateRandomGeneralTree() {
+           if (RandomMinNodes < 2 || RandomMaxNodes < RandomMinNodes || RandomMaxDepth < 1) {
+                GeneralErrors = new List<string>{"Tham số tạo cây ngẫu nhiên không hợp lệ."};
+                StateHasChanged(); return;
+           }
+          await GenerateGeneralTree(() => TreeService.GenerateRandomTree(RandomMinNodes, RandomMaxNodes, RandomMaxDepth, GeneralTreeType == "Nhị phân"));
+     }
+
+    private void BuildNodeMap(TreeNode? node, Dictionary<string, TreeNode> map) {
+        if (node == null) return;
+        map[node.Id] = node;
+        foreach(var child in node.GetChildren()) BuildNodeMap(child, map);
+    }
+
+    private void PerformGeneralTraversal() {
+        if (GeneralTreeRoot == null) return;
+        ClearGeneralTraversalHighlights();
+        bool isBinary = (GeneralTreeType == "Nhị phân");
+        if (GeneralSelectedTraversal == "In-order" && !isBinary) {
+            Notify(NotificationSeverity.Warning, "Không phù hợp", "Duyệt In-order thường dùng cho cây nhị phân. Sử dụng Pre-order thay thế.");
+             GeneralSelectedTraversal = "Pre-order";
+        }
+        GeneralTraversalResultData = TreeService.TraverseTree(GeneralTreeRoot, GeneralSelectedTraversal, isBinary);
+        StateHasChanged();
+    }
+
+     private void ClearGeneralTraversalHighlights() {
+         GeneralTraversalResultIds.Clear(); GeneralTraversalResultData.Clear();
+         GeneralTraversalEdges.Clear(); GeneralCurrentTraversalNodeId = null;
+     }
+    private void ClearGeneralTraversal() { ClearGeneralTraversalHighlights(); StateHasChanged(); }
+
+    // --- General Tree Dragging Handlers ---
+    private async Task UpdateGeneralSvgOffsets() {
+         try {
+              if (generalTreeSvgContainer.Id != null) {
+                   var rect = await JSRuntime.InvokeAsync<BoundingClientRect?>("getBoundingClientRect", generalTreeSvgContainer);
+                   if (rect != null) { GeneralSvgOffsetX = rect.Left; GeneralSvgOffsetY = rect.Top; }
+              }
+         } catch (Exception ex) { Console.WriteLine($"Error getting General SVG offsets: {ex.Message}"); }
+    }
+    async Task HandleGeneralMouseDown(string vertexId, MouseEventArgs e) {
+         if (GeneralTreeLayout != null && GeneralTreeLayout.NodePositions.ContainsKey(vertexId)) {
+             GeneralDraggingVertexId = vertexId;
+             await UpdateGeneralSvgOffsets();
+             var nodePos = GeneralTreeLayout.NodePositions[vertexId];
+             GeneralDragOffsetX = e.ClientX - GeneralSvgOffsetX - nodePos.X;
+             GeneralDragOffsetY = e.ClientY - GeneralSvgOffsetY - nodePos.Y;
+             // await InvokeAsync(StateHasChanged); // Không cần thiết ở đây
+         }
+     }
+     void HandleGeneralMouseMove(MouseEventArgs e) {
+         if (GeneralDraggingVertexId != null && GeneralTreeLayout != null && GeneralTreeLayout.NodePositions.ContainsKey(GeneralDraggingVertexId)) {
+             double newX = e.ClientX - GeneralSvgOffsetX - GeneralDragOffsetX;
+             double newY = e.ClientY - GeneralSvgOffsetY - GeneralDragOffsetY;
+             double r = 20;
+             double maxX = (GeneralTreeLayout?.Width ?? 600) - r; double maxY = (GeneralTreeLayout?.Height ?? 400) - r;
+             newX = Math.Max(r, Math.Min(newX, maxX)); newY = Math.Max(r, Math.Min(newY, maxY));
+             GeneralTreeLayout.NodePositions[GeneralDraggingVertexId] = (newX, newY);
+             StateHasChanged();
+         }
+     }
+     void HandleGeneralMouseUpOrLeave() {
+         if (GeneralDraggingVertexId != null) {
+             GeneralDraggingVertexId = null;
+             // InvokeAsync(StateHasChanged); // Thường không cần thiết
+         }
+     }
+
+    // --- BST Methods ---
+    private void BuildBstNodeMap(BstNode? node) {
+        if (node == null) return;
+        BstNodeMap[node.Id] = node;
+        BuildBstNodeMap(node.Left);
+        BuildBstNodeMap(node.Right);
+    }
+
+    private async Task UpdateBstVisualization()
+    {
+         bool treeExisted = BstRoot != null; // Check if tree existed before update
+         if (BstRoot != null)
+         {
+             BstNodeMap.Clear(); BuildBstNodeMap(BstRoot);
+             BstLayout = TreeService.CalculateBstLayout(BstRoot);
+             ClearBstTraversalHighlights();
+             // Chỉ gọi UpdateBstSvgOffsets nếu component đã render ít nhất 1 lần
+             // await UpdateBstSvgOffsets(); // Gọi ở đây có thể sớm, OnAfterRender tốt hơn
+         } else {
+             BstLayout = null; BstNodeMap.Clear();
+         }
+         // Chỉ gọi StateHasChanged nếu trạng thái thực sự thay đổi (ví dụ: từ có cây sang không có cây)
+         if (treeExisted != (BstRoot != null)) {
+             await InvokeAsync(StateHasChanged);
+         } else if (BstRoot != null) {
+             // Nếu cây vẫn tồn tại, các hàm gọi UpdateBstVisualization sẽ tự gọi StateHasChanged sau đó
+             await InvokeAsync(StateHasChanged); // Hoặc gọi luôn ở đây cho chắc chắn
+         }
+    }
+
+    private async Task CreateBst() {
+        if (IsBstProcessing || IsBstTraversing) return;
+        IsBstProcessing = true; BstErrors.Clear(); await InvokeAsync(StateHasChanged);
+        BstRoot = TreeService.CreateBstFromNumbers(BstInputNumbers, out BstErrors);
+        await UpdateBstVisualization();
+        IsBstProcessing = false; await InvokeAsync(StateHasChanged); // Cập nhật UI sau khi xử lý xong
+        if(!BstErrors.Any() && BstRoot != null) Notify(NotificationSeverity.Success, "BST đã được tạo/cập nhật.");
+    }
+     private async Task InsertBst() {
+         if (BstNodeValue == null || IsBstProcessing || IsBstTraversing) return;
+         IsBstProcessing = true; BstErrors.Clear(); await InvokeAsync(StateHasChanged);
+         int value = BstNodeValue.Value;
+         if (BstRoot != null && DoesNodeExist(BstRoot, value)) { Notify(NotificationSeverity.Info, "Nút đã tồn tại", $"Nút '{value}' đã có trong cây."); }
+         else { BstRoot = TreeService.InsertBstNode(BstRoot, value); await UpdateBstVisualization(); Notify(NotificationSeverity.Success, "Đã thêm nút", $"Đã thêm nút '{value}'."); BstNodeValue = null; }
+         IsBstProcessing = false; await InvokeAsync(StateHasChanged);
+     }
+     private async Task DeleteBst() {
+         if (BstNodeValue == null || BstRoot == null || IsBstProcessing || IsBstTraversing) return;
+         IsBstProcessing = true; BstErrors.Clear(); await InvokeAsync(StateHasChanged);
+         int value = BstNodeValue.Value;
+         if (!DoesNodeExist(BstRoot, value)) { Notify(NotificationSeverity.Error, "Không tìm thấy", $"Nút '{value}' không có trong cây để xóa."); }
+         else { BstRoot = TreeService.DeleteBstNode(BstRoot, value); await UpdateBstVisualization(); Notify(NotificationSeverity.Success, "Đã xóa nút", $"Đã xóa nút '{value}'."); BstNodeValue = null; }
+         IsBstProcessing = false; await InvokeAsync(StateHasChanged);
+     }
+     private async Task ResetBst() {
+         _bstTraversalCts.Cancel(); _bstTraversalCts = new CancellationTokenSource();
+         BstRoot = null; BstLayout = null; BstErrors.Clear(); IsBstProcessing = false; IsBstTraversing = false;
+         BstInputNumbers = ""; BstNodeValue = null; ClearBstTraversalHighlights();
+         BstDraggingVertexId = null; BstNodeMap.Clear();
+         await InvokeAsync(StateHasChanged);
+     }
+     private bool DoesNodeExist(BstNode? node, int value) { if (node == null) return false; if (node.Value == value) return true; return value < node.Value ? DoesNodeExist(node.Left, value) : DoesNodeExist(node.Right, value); }
+
+
+
+     // --- BST Traversal Animation ---
+    private async Task PerformBstTraversalAnimated()
+    {
+        if (BstRoot == null || IsBstTraversing || IsBstProcessing) return;
+        IsBstTraversing = true;
+        BstTraversalTypeDisplay = BstSelectedTraversal;
+        ClearBstTraversalHighlights();
+        await InvokeAsync(StateHasChanged);
+        _bstTraversalCts.Cancel(); _bstTraversalCts = new CancellationTokenSource();
+        var token = _bstTraversalCts.Token;
+        try
+        {
+            switch (BstSelectedTraversal)
+            {
+                case "Pre-order": await AnimatePreOrder(BstRoot, null, token); break;
+                case "In-order": await AnimateInOrder(BstRoot, null, token); break;
+                case "Post-order": await AnimatePostOrder(BstRoot, null, token); break;
+                case "Level-order": await AnimateLevelOrder(BstRoot, token); break;
+            }
+        }
+        catch (TaskCanceledException) { Notify(NotificationSeverity.Info, "Đã hủy duyệt BST."); }
+        catch (Exception ex) { BstErrors.Add($"Lỗi khi duyệt BST: {ex.Message}"); Notify(NotificationSeverity.Error, "Lỗi duyệt BST", ex.Message); }
+        finally { BstCurrentTraversalNodeId = null; IsBstTraversing = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task AnimatePreOrder(BstNode? node, BstNode? parent, CancellationToken token)
+    {
+        if (node == null || token.IsCancellationRequested) return;
+        if (parent != null) BstTraversalEdges[(parent.Id, node.Id)] = true;
+        BstCurrentTraversalNodeId = node.Id; BstVisitedNodeIds.Add(node.Id); BstTraversalResultValues.Add(node.Value.ToString());
+        await InvokeAsync(StateHasChanged); await Task.Delay(BstTraversalDelay, token);
+        if (token.IsCancellationRequested) return; // Check cancellation frequently
+        await AnimatePreOrder(node.Left, node, token);
+        if (token.IsCancellationRequested) return; // Check cancellation frequently
+        await AnimatePreOrder(node.Right, node, token);
+    }
+
+    private async Task AnimateInOrder(BstNode? node, BstNode? parent, CancellationToken token)
+    {
+        if (node == null || token.IsCancellationRequested) return;
+        if (parent != null) BstTraversalEdges.TryAdd((parent.Id, node.Id), true);
+        await AnimateInOrder(node.Left, node, token);
+        if (token.IsCancellationRequested) return;
+        if (node.Left != null) BstTraversalEdges.TryAdd((node.Left.Id, node.Id), true); else if (parent != null) BstTraversalEdges.TryAdd((parent.Id, node.Id), true);
+        BstCurrentTraversalNodeId = node.Id; BstVisitedNodeIds.Add(node.Id); BstTraversalResultValues.Add(node.Value.ToString());
+        await InvokeAsync(StateHasChanged); await Task.Delay(BstTraversalDelay, token);
+        if (token.IsCancellationRequested) return;
+        if (node.Right != null) BstTraversalEdges.TryAdd((node.Id, node.Right.Id), true);
+        await AnimateInOrder(node.Right, node, token);
+    }
+
+    private async Task AnimatePostOrder(BstNode? node, BstNode? parent, CancellationToken token)
+    {
+        if (node == null || token.IsCancellationRequested) return;
+        if (parent != null) BstTraversalEdges.TryAdd((parent.Id, node.Id), true);
+        await AnimatePostOrder(node.Left, node, token);
+        if (token.IsCancellationRequested) return;
+        if (node.Left != null) BstTraversalEdges.TryAdd((node.Left.Id, node.Id), true); else if (parent != null) BstTraversalEdges.TryAdd((parent.Id, node.Id), true);
+        if (node.Right != null) BstTraversalEdges.TryAdd((node.Id, node.Right.Id), true);
+        await AnimatePostOrder(node.Right, node, token);
+        if (token.IsCancellationRequested) return;
+        if (node.Right != null) BstTraversalEdges.TryAdd((node.Right.Id, node.Id), true); else if (node.Left != null) BstTraversalEdges.TryAdd((node.Left.Id, node.Id), true); else if (parent != null) BstTraversalEdges.TryAdd((parent.Id, node.Id), true);
+        BstCurrentTraversalNodeId = node.Id; BstVisitedNodeIds.Add(node.Id); BstTraversalResultValues.Add(node.Value.ToString());
+        await InvokeAsync(StateHasChanged); await Task.Delay(BstTraversalDelay, token);
+    }
+
+    private async Task AnimateLevelOrder(BstNode? root, CancellationToken token)
+    {
+        if (root == null) return;
+        var queue = new Queue<(BstNode Node, BstNode? Parent)>(); queue.Enqueue((root, null));
+        while (queue.Count > 0 && !token.IsCancellationRequested)
+        {
+            var (current, parent) = queue.Dequeue();
+            if (parent != null) BstTraversalEdges.TryAdd((parent.Id, current.Id), true);
+            BstCurrentTraversalNodeId = current.Id; BstVisitedNodeIds.Add(current.Id); BstTraversalResultValues.Add(current.Value.ToString());
+            await InvokeAsync(StateHasChanged); await Task.Delay(BstTraversalDelay, token);
+            if (token.IsCancellationRequested) return; // Check inside loop
+            if (current.Left != null) queue.Enqueue((current.Left, current));
+            if (current.Right != null) queue.Enqueue((current.Right, current));
+        }
+    }
+
+    private void ClearBstTraversalHighlights()
+    {
+        BstTraversalResultValues.Clear();
+        BstVisitedNodeIds.Clear();
+        BstTraversalEdges.Clear();
+        BstCurrentTraversalNodeId = null;
+        BstTraversalTypeDisplay = "";
+    }
+
+    private void ClearBstTraversal()
+    {
+        if (IsBstTraversing) { _bstTraversalCts.Cancel(); _bstTraversalCts = new CancellationTokenSource(); IsBstTraversing = false; }
+        ClearBstTraversalHighlights(); StateHasChanged();
+    }
+
+    // --- BST Dragging ---
+    private async Task UpdateBstSvgOffsets()
+    {
+        try
+        {
+            if (bstSvgContainer.Id != null)
+            {
+                // Console.WriteLine("BST Update Svg Offsets - Calling JS"); // DEBUG
+                var rect = await JSRuntime.InvokeAsync<BoundingClientRect?>("getBoundingClientRect", bstSvgContainer);
+                if (rect != null) { BstSvgOffsetX = rect.Left; BstSvgOffsetY = rect.Top; /* Console.WriteLine($"BST Offsets Updated: {BstSvgOffsetX}, {BstSvgOffsetY}"); */ } // DEBUG
+                else { /* Console.WriteLine("BST Update Svg Offsets - JS returned null"); */ } // DEBUG
+            }
+            else { /* Console.WriteLine("BST Update Svg Offsets - ElementReference ID is null"); */ } // DEBUG
+        }
+        catch (Exception ex) { Console.WriteLine($"Error getting BST SVG offsets: {ex.Message}"); }
+    }
+    async Task HandleBstMouseDown(string vertexId, MouseEventArgs e)
+    {
+        // Console.WriteLine($"BST MouseDown on {vertexId}"); // DEBUG
+        if (BstLayout != null && BstLayout.NodePositions.ContainsKey(vertexId) && !IsBstTraversing && !IsBstProcessing)
+        {
+            BstDraggingVertexId = vertexId;
+            await UpdateBstSvgOffsets();
+            var nodePos = BstLayout.NodePositions[vertexId];
+            BstDragOffsetX = e.ClientX - BstSvgOffsetX - nodePos.X;
+            BstDragOffsetY = e.ClientY - BstSvgOffsetY - nodePos.Y;
+            // Console.WriteLine($"BST Start Drag: ID={vertexId}, Client({e.ClientX},{e.ClientY}), SVGOffset({BstSvgOffsetX},{BstSvgOffsetY}), NodePos({nodePos.X},{nodePos.Y}), DragOffset({BstDragOffsetX},{BstDragOffsetY})"); // DEBUG
+        }
+        else { /* Console.WriteLine($"BST MouseDown ignored: LayoutNull={BstLayout==null}, Traversing={IsBstTraversing}, Processing={IsBstProcessing}"); */ } // DEBUG
+    }
+    void HandleBstMouseMove(MouseEventArgs e)
+    {
+        if (BstDraggingVertexId != null && BstLayout != null && BstLayout.NodePositions.ContainsKey(BstDraggingVertexId))
+        {
+            double newX = e.ClientX - BstSvgOffsetX - BstDragOffsetX;
+            double newY = e.ClientY - BstSvgOffsetY - BstDragOffsetY;
+            double r = 20;
+            double maxX = (BstLayout?.Width ?? 600) - r; double maxY = (BstLayout?.Height ?? 400) - r;
+            newX = Math.Max(r, Math.Min(newX, maxX)); newY = Math.Max(r, Math.Min(newY, maxY));
+            BstLayout.NodePositions[BstDraggingVertexId] = (newX, newY);
+            // Console.WriteLine($"BST Move Set: ID={BstDraggingVertexId} Pos=({newX},{newY})"); // DEBUG
+            StateHasChanged();
+        }
+    }
+    void HandleBstMouseUpOrLeave()
+    {
+        // Console.WriteLine($"BST MouseUp/Leave: Dragging={BstDraggingVertexId}"); // DEBUG
+        if (BstDraggingVertexId != null)
+        {
+            BstDraggingVertexId = null;
+        }
+    }
+
+    // --- Utilities ---
+    public class BoundingClientRect { public double Left { get; set; } public double Top { get; set; } public double Width { get; set; } public double Height { get; set; } }
+    private void Notify(NotificationSeverity severity, string summary, string? detail = null, double duration = 4000) { /* Giữ nguyên */ }
+
+} 

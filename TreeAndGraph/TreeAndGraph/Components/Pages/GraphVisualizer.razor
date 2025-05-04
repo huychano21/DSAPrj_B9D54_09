@@ -1,0 +1,673 @@
+﻿@page "/dothi"
+@using TreeAndGraph.Models.GraphModel
+@using TreeAndGraph.Services.GraphService 
+@using Radzen.Blazor
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+
+<link href="css/style.css" rel="stylesheet" />
+<PageTitle>Graph Visualizer</PageTitle>
+
+
+<RadzenLayout>
+    <RadzenHeader>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0">
+            <RadzenSidebarToggle Click="@(() => _sidebarExpanded = !_sidebarExpanded)" />
+            <RadzenLabel Text="Graph Visualizer" />
+        </RadzenStack>
+    </RadzenHeader>
+    <RadzenSidebar @bind-Expanded="@_sidebarExpanded">
+        <RadzenPanelMenu>
+            <RadzenPanelMenuItem Text="Controls" Icon="settings">
+                <RadzenStack Gap="1rem" Class="rz-p-4">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenLabel Text="Directed:" Component="IsDirectedSwitch" />
+                        <RadzenSwitch @bind-Value="@_isDirected" Change="@(async args => await OnGraphTypeChanged(args))" Name="IsDirectedSwitch" />
+                    </RadzenStack>
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenLabel Text="Weighted:" Component="IsWeightedSwitch" />
+                        <RadzenSwitch @bind-Value="@_isWeighted" Change="@(async args => await OnGraphWeightChanged(args))" Name="IsWeightedSwitch" />
+                    </RadzenStack>
+
+                    <RadzenLabel Text="Mode:" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.2rem" Wrap="FlexWrap.Wrap">
+                        <RadzenButton Text="Force" Icon="compare_arrows" Click="@(() => SetModeAndNotify(GraphMode.Force))" ButtonStyle="@(_currentMode == GraphMode.Force ? ButtonStyle.Primary : ButtonStyle.Secondary)" />
+                        <RadzenButton Text="Draw" Icon="draw" Click="@(() => SetModeAndNotify(GraphMode.Draw))" ButtonStyle="@(_currentMode == GraphMode.Draw ? ButtonStyle.Primary : ButtonStyle.Secondary)" />
+                        <RadzenButton Text="Edit" Icon="edit" Click="@(() => SetModeAndNotify(GraphMode.Edit))" ButtonStyle="@(_currentMode == GraphMode.Edit ? ButtonStyle.Primary : ButtonStyle.Secondary)" />
+                        <RadzenButton Text="Delete" Icon="delete" Click="@(() => SetModeAndNotify(GraphMode.Delete))" ButtonStyle="@(_currentMode == GraphMode.Delete ? ButtonStyle.Primary : ButtonStyle.Secondary)" />
+                    </RadzenStack>
+
+                    <RadzenButton Text="Clear Graph" Click="ClearGraph" ButtonStyle="ButtonStyle.Danger" Icon="clear" />
+
+                </RadzenStack>
+            </RadzenPanelMenuItem>
+
+            <RadzenPanelMenuItem Text="Create" Icon="add_circle_outline">
+                <RadzenStack Gap="1rem" Class="rz-p-4">
+                    <RadzenLabel Text="Input Format:" Component="CreateFormatDropDown" />
+                    <RadzenDropDown @bind-Value="@_createFormat" TValue="GraphInputFormat" Data="@(Enum.GetValues<GraphInputFormat>())" Name="CreateFormatDropDown" />
+                    <RadzenLabel Text="Graph Data:" Component="GraphInputDataTextArea" />
+                    <RadzenTextArea @bind-Value="@_graphInputData" Rows="5" Placeholder="e.g., 1 2\n1 3\n2 4 5 (for weighted)" Name="GraphInputDataTextArea" />
+                    <RadzenButton Text="Create Graph" Click="CreateGraphFromInput" ButtonStyle="ButtonStyle.Success" Icon="play_arrow" />
+                </RadzenStack>
+            </RadzenPanelMenuItem>
+
+
+            <RadzenPanelMenuItem Text="Algorithms" Icon="memory">
+                <RadzenStack Gap="1rem" Class="rz-p-4">
+                    <RadzenLabel Text="Algorithm:" Component="AlgorithmDropDown" />
+                    <RadzenDropDown Data="@(Enum.GetValues<AlgorithmType>())"
+                                    TValue="AlgorithmType"
+                                    Value="@_selectedAlgorithm"
+                                    ValueChanged="@((AlgorithmType value) => OnAlgorithmSelected(value))"
+                                    Name="AlgorithmDropDown" />
+
+
+                    @* Inputs specific to algorithms *@
+                    @if (_requiresStartNode)
+                    {
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenLabel Text="Start Node:" Component="StartNodeDropDown" />
+                            <RadzenDropDown AllowClear="true" TValue="int?" Data="@_graph.Nodes.Values.OrderBy(n=>GetNodeLabel(n.Id))" TextProperty="Data" ValueProperty="Id" @bind-Value="@_startNodeId" Placeholder="Select Start" Style="width: 150px;" Name="StartNodeDropDown" />
+                        </RadzenStack>
+                    }
+                    @if (_requiresEndNode)
+                    {
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenLabel Text="End Node:" Component="EndNodeDropDown" />
+                            <RadzenDropDown AllowClear="true" TValue="int?" Data="@_graph.Nodes.Values.OrderBy(n=>GetNodeLabel(n.Id))" TextProperty="Data" ValueProperty="Id" @bind-Value="@_endNodeId" Placeholder="Select End" Style="width: 150px;" Name="EndNodeDropDown" />
+                        </RadzenStack>
+                    }
+
+                    <RadzenButton Text="Run" Click="RunAlgorithm" Disabled="@(!CanRunAlgorithm())" ButtonStyle="ButtonStyle.Primary" Icon="play_circle_filled" />
+                    <RadzenButton Text="Next Step" Click="NextAlgorithmStep" Disabled="@(!_isPlayingAlgorithm || _currentStepIndex >= _algorithmSteps.Count - 1)" Icon="skip_next" />
+                    <RadzenButton Text="Reset Vis" Click="ResetVisualization" Disabled="@(!_isPlayingAlgorithm)" Icon="replay" />
+
+                    @if (!string.IsNullOrEmpty(_algorithmStatus))
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Lighter" AllowClose="false">@_algorithmStatus</RadzenAlert>
+                    }
+                </RadzenStack>
+            </RadzenPanelMenuItem>
+
+            <RadzenPanelMenuItem Text="Config" Icon="build">
+                <RadzenStack Gap="1rem" Class="rz-p-4">
+                    <RadzenLabel Text="Node Radius:" Component="NodeRadiusNumeric" />
+                    <RadzenNumeric TValue="double" Value="@_nodeRadius" ValueChanged="@(async (double value) => await UpdateJsConfig(value))" Min="3" Max="30" Name="NodeRadiusNumeric" />
+                    @* Add DropDowns for colors here if needed *@
+                </RadzenStack>
+            </RadzenPanelMenuItem>
+
+            <RadzenPanelMenuItem Text="Info" Icon="info">
+                <RadzenStack Gap="1rem" Class="rz-p-4">
+                    <RadzenButton Text="Show Degrees" Click="ShowNodeDegrees" Icon="format_list_numbered" />
+                    @if (_nodeDegreesInfo != null && _nodeDegreesInfo.Any())
+                    {
+                        <RadzenLabel Text="Node Degrees:" Style="font-weight: bold;" />
+                        <ul style="list-style-type: none; padding-left: 0; max-height: 150px; overflow-y: auto;">
+                            @foreach (var kvp in _nodeDegreesInfo.OrderBy(kv => GetNodeLabel(kv.Key)))
+                            {
+                                <li>@GetNodeLabel(kvp.Key): @kvp.Value</li>
+                            }
+                        </ul>
+                    }
+                    else if (_showDegreeClicked)
+                    {
+                        <RadzenLabel Text="No nodes or degrees to show." />
+                    }
+                </RadzenStack>
+            </RadzenPanelMenuItem>
+
+        </RadzenPanelMenu>
+    </RadzenSidebar>
+    <RadzenBody>
+        <div class="rz-p-4">
+            <canvas id="graphCanvas" @ref="_canvasReference" style="border: 1px solid black; width: 100%; height: 600px; background-color: #f0f0f0;"></canvas>
+        </div>
+    </RadzenBody>
+    <RadzenFooter>
+        <RadzenLabel Text="@($"Mode: {_currentMode} | Nodes: {_graph.Nodes.Count} | Edges: {_graph.Edges.Count} | Directed: {_isDirected} | Weighted: {_isWeighted}")" />
+    </RadzenFooter>
+</RadzenLayout>
+
+@code {
+    // Graph state
+    private Graph<string, object> _graph = new Graph<string, object>();
+    private bool _isDirected = false;
+    private bool _isWeighted = false;
+
+    // UI state
+    private bool _sidebarExpanded = true;
+    private GraphMode _currentMode = GraphMode.Force;
+    private double _nodeRadius = 15;
+    private ElementReference _canvasReference;
+
+    // State for creating graph from input
+    private GraphInputFormat _createFormat = GraphInputFormat.EdgeList;
+    private string _graphInputData = string.Empty;
+
+    // State for Draw mode
+    private int? _drawingEdgeStartNodeId = null;
+
+    // State for algorithms
+    private AlgorithmType _selectedAlgorithm = AlgorithmType.None;
+    private int? _startNodeId = null;
+    private int? _endNodeId = null;
+    private bool _requiresStartNode = false;
+    private bool _requiresEndNode = false;
+    private bool _isPlayingAlgorithm = false;
+    private List<AlgorithmStep<string, object>> _algorithmSteps = new();
+    private int _currentStepIndex = -1;
+    private string _algorithmStatus = string.Empty;
+
+    // State for Info Panel
+    private Dictionary<int, int>? _nodeDegreesInfo = null;
+    private bool _showDegreeClicked = false;
+
+    // JS Interop references
+    private IJSObjectReference? _jsModule;
+    private DotNetObjectReference<GraphVisualizer>? _dotNetHelper;
+    private bool _isDisposed = false;
+
+    // Enums
+    private enum GraphMode { Force, Draw, Edit, Delete }
+    private enum AlgorithmType { None, DFS, BFS, Dijkstra, Kruskal, Prim, CheckEuler, FindHamiltonianPath }
+    private enum GraphInputFormat { EdgeList, AdjacencyList, AdjacencyMatrix }
+
+    private static Graph<string, object> CreateDefaultGraphWithNumbers()
+    {
+        var graph = new Graph<string, object> { IsDirected = false, IsWeighted = false };
+        var n1 = graph.AddNode(100, 100, "1"); var n2 = graph.AddNode(250, 100, "2");
+        var n3 = graph.AddNode(100, 250, "3"); var n4 = graph.AddNode(250, 250, "4");
+        graph.AddEdge(n1.Id, n2.Id); graph.AddEdge(n1.Id, n3.Id);
+        graph.AddEdge(n2.Id, n4.Id); graph.AddEdge(n3.Id, n4.Id);
+        return graph;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _graph = CreateDefaultGraphWithNumbers();
+        await base.OnInitializedAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetHelper = DotNetObjectReference.Create<GraphVisualizer>(this);
+            try
+            {
+                _jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/graph-visualizer.js");
+                if (_jsModule != null)
+                {
+                    Console.WriteLine("C#: Calling initGraphCanvas with data from _graph.");
+                    await InvokeJsVoidAsync("initGraphCanvas", _dotNetHelper, GetGraphDataForJs());
+                    await UpdateJsConfig(_nodeRadius);
+                    await SetJsMode();
+                }
+            }
+            catch (Exception ex) when (ex is JSException || ex is JSDisconnectedException || ex is ObjectDisposedException)
+            {
+                Console.WriteLine($"Error during initial JS interop: {ex.Message}");
+            }
+        }
+    }
+
+    // ---- Helper Methods ----
+    private bool IsComponentDisposed() => _isDisposed;
+
+    private async Task InvokeJsVoidAsync(string identifier, params object?[]? args)
+    {
+        if (IsComponentDisposed() || _jsModule == null) { Console.WriteLine($"Skipping JS call '{identifier}'..."); return; }
+        try { await _jsModule.InvokeVoidAsync(identifier, args); }
+        catch (Exception ex) when (ex is JSException || ex is JSDisconnectedException || ex is ObjectDisposedException) { Console.WriteLine($"JS Interop call '{identifier}' failed safely: {ex.Message}"); }
+        catch (Exception ex) { Console.WriteLine($"Error during JS Interop call '{identifier}': {ex.Message}"); }
+    }
+
+    private async Task<T> InvokeJsAsync<T>(string identifier, params object?[]? args)
+    {
+        if (IsComponentDisposed() || _jsModule == null) { Console.WriteLine($"Skipping JS call '{identifier}'..."); return default!; }
+        try { return await _jsModule.InvokeAsync<T>(identifier, args); }
+        catch (Exception ex) when (ex is JSException || ex is JSDisconnectedException || ex is ObjectDisposedException) { Console.WriteLine($"JS Interop call '{identifier}' failed safely: {ex.Message}"); return default!; }
+        catch (Exception ex) { Console.WriteLine($"Error during JS Interop call '{identifier}': {ex.Message}"); return default!; }
+    }
+
+    private object GetGraphDataForJs()
+    {
+        try
+        {
+            var validNodes = _graph.Nodes.Values.Where(n => n != null).ToList();
+            var nodesForJs = validNodes.Select(n => new { Id = n.Id, X = n.X, Y = n.Y, Label = GetNodeLabel(n.Id), IsFixed = n.IsFixed }).ToList();
+            var validNodeIds = validNodes.Select(n => n.Id).ToHashSet();
+            var edgesForJs = _graph.Edges.Where(e => e != null && validNodeIds.Contains(e.From) && validNodeIds.Contains(e.To)).Select(e => new { From = e.From, To = e.To, Weight = e.Weight }).ToList();
+            return new { nodes = nodesForJs, edges = edgesForJs, isDirected = _graph.IsDirected, isWeighted = _graph.IsWeighted };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in GetGraphDataForJs: {ex.Message}\n{ex.StackTrace}");
+            _algorithmStatus = "Lỗi chuẩn bị dữ liệu đồ thị.";
+            return new { nodes = new List<object>(), edges = new List<object>(), isDirected = _graph.IsDirected, isWeighted = _graph.IsWeighted };
+        }
+    }
+
+    private string GetNodeLabel(int nodeId)
+    {
+        return _graph.Nodes.TryGetValue(nodeId, out var node) && node.Data != null ? node.Data.ToString() ?? nodeId.ToString() : nodeId.ToString();
+    }
+
+    private async Task UpdateGraphInJs()
+    {
+        _nodeDegreesInfo = null; _showDegreeClicked = false;
+        var graphData = GetGraphDataForJs();
+        await InvokeJsVoidAsync("updateGraphData", graphData);
+        if (!IsComponentDisposed()) { await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task UpdateJsConfig(double newNodeRadius)
+    {
+        _nodeRadius = newNodeRadius;
+        await InvokeJsVoidAsync("updateConfig", new { nodeRadius = _nodeRadius });
+    }
+
+    private async Task SetJsMode()
+    {
+        await InvokeJsVoidAsync("setMode", _currentMode.ToString().ToLower());
+    }
+
+    // ---- Callbacks from JavaScript ----
+    [JSInvokable]
+    public async Task HandleNodeClick(int nodeId)
+    {
+        if (IsComponentDisposed()) return;
+        Console.WriteLine($"C#: HandleNodeClick called with nodeId: {nodeId}");
+        bool requiresUiUpdate = true;
+        if (nodeId < 0)
+        {
+            if (_currentMode == GraphMode.Draw && _drawingEdgeStartNodeId != null)
+            {
+                Console.WriteLine($"C#: Cancelling edge draw from {_drawingEdgeStartNodeId.Value}");
+                _algorithmStatus = $"Hủy vẽ cạnh từ {GetNodeLabel(_drawingEdgeStartNodeId.Value)}."; _drawingEdgeStartNodeId = null;
+            }
+            else if (!_isPlayingAlgorithm && (_startNodeId.HasValue || _endNodeId.HasValue))
+            {
+                Console.WriteLine("C#: Clearing algorithm node selection");
+                _startNodeId = null; _endNodeId = null; _algorithmStatus = "Đã bỏ chọn nút bắt đầu/kết thúc.";
+            }
+            else { requiresUiUpdate = false; }
+        }
+        else
+        {
+            switch (_currentMode)
+            {
+                case GraphMode.Delete:
+                    Console.WriteLine($"C#: Attempting to delete node {nodeId}");
+                    string nodeLabelToDelete = GetNodeLabel(nodeId);
+                    if (_graph.RemoveNode(nodeId))
+                    {
+                        _algorithmStatus = $"Đã xóa nút {nodeLabelToDelete} (ID: {nodeId}).";
+                        if (_startNodeId == nodeId) _startNodeId = null; if (_endNodeId == nodeId) _endNodeId = null;
+                        await UpdateGraphInJs(); requiresUiUpdate = false;
+                    }
+                    else { _algorithmStatus = $"Không thể xóa nút {nodeId}."; }
+                    break;
+                case GraphMode.Draw:
+                    if (_drawingEdgeStartNodeId == null)
+                    {
+                        Console.WriteLine($"C#: Starting edge draw from node {nodeId}");
+                        _drawingEdgeStartNodeId = nodeId; _algorithmStatus = $"Click nút khác để hoàn thành cạnh từ {GetNodeLabel(nodeId)}.";
+                    }
+                    else if (_drawingEdgeStartNodeId.Value != nodeId)
+                    {
+                        Console.WriteLine($"C#: Clicked second node {nodeId} for edge draw (waiting for HandleEdgeDrawn).");
+                        _algorithmStatus = $"Đang vẽ cạnh từ {GetNodeLabel(_drawingEdgeStartNodeId.Value)} đến {GetNodeLabel(nodeId)}...";
+                    }
+                    else
+                    {
+                        Console.WriteLine($"C#: Cancelling edge draw from {nodeId}");
+                        _algorithmStatus = $"Hủy vẽ cạnh từ {GetNodeLabel(nodeId)}."; _drawingEdgeStartNodeId = null;
+                    }
+                    break;
+                case GraphMode.Edit:
+                    Console.WriteLine($"C#: Attempting to edit node {nodeId}");
+                    var node = _graph.Nodes.GetValueOrDefault(nodeId);
+                    if (node != null)
+                    {
+                        string currentLabel = node.Data ?? "";
+                        // --- UPDATED: Call JS helper function ---
+                        string? newLabel = await InvokeJsAsync<string>("getNodeLabelInput", $"Nhập nhãn mới cho nút '{GetNodeLabel(node.Id)}':", currentLabel);
+                        // --- END UPDATED ---
+                        if (IsComponentDisposed()) return;
+                        if (newLabel == null) { _algorithmStatus = "Hủy sửa nhãn nút."; }
+                        else if (newLabel == currentLabel) { _algorithmStatus = "Nhãn nút không đổi."; }
+                        else if (string.IsNullOrWhiteSpace(newLabel)) { _algorithmStatus = "Nhãn nút không được để trống."; }
+                        else if (_graph.Nodes.Values.Any(n => n.Id != nodeId && (n.Data?.ToString() ?? "") == newLabel)) { _algorithmStatus = $"Nhãn '{newLabel}' đã tồn tại. Vui lòng chọn nhãn khác."; }
+                        else
+                        {
+                            node.Data = newLabel; _algorithmStatus = $"Đã cập nhật nhãn nút {nodeId} thành '{newLabel}'."; await UpdateGraphInJs(); requiresUiUpdate = false;
+                        }
+                    }
+                    else { _algorithmStatus = $"Không tìm thấy nút {nodeId}."; }
+                    requiresUiUpdate = true;
+                    break;
+                case GraphMode.Force:
+                    if (!_isPlayingAlgorithm)
+                    {
+                        if (_requiresStartNode && _startNodeId == null) { _startNodeId = nodeId; _algorithmStatus = $"Nút bắt đầu được đặt thành {GetNodeLabel(nodeId)}."; requiresUiUpdate = true; }
+                        else if (_requiresEndNode && _endNodeId == null && _startNodeId != nodeId) { _endNodeId = nodeId; _algorithmStatus = $"Nút kết thúc được đặt thành {GetNodeLabel(nodeId)}."; requiresUiUpdate = true; }
+                        else if (_requiresStartNode && _startNodeId == nodeId) { _startNodeId = null; _endNodeId = null; _algorithmStatus = "Đã bỏ chọn nút bắt đầu."; requiresUiUpdate = true; }
+                        else if (_requiresEndNode && _endNodeId == nodeId) { _endNodeId = null; _algorithmStatus = "Đã bỏ chọn nút kết thúc."; requiresUiUpdate = true; }
+                        else { requiresUiUpdate = false; }
+                    }
+                    else { requiresUiUpdate = false; }
+                    break;
+                default: requiresUiUpdate = false; break;
+            }
+        }
+        if (requiresUiUpdate && !IsComponentDisposed()) { await InvokeAsync(StateHasChanged); }
+    }
+
+    [JSInvokable]
+    public async Task HandleEdgeClick(int fromId, int toId)
+    {
+        if (IsComponentDisposed()) return;
+        Console.WriteLine($"C#: HandleEdgeClick called for edge: {fromId} -> {toId}");
+        bool requiresUiUpdate = true;
+        switch (_currentMode)
+        {
+            case GraphMode.Delete:
+                Console.WriteLine($"C#: Attempting to delete edge ({fromId}-{toId})");
+                string edgeLabelToDelete = $"({GetNodeLabel(fromId)}-{GetNodeLabel(toId)})";
+                if (_graph.RemoveEdge(fromId, toId))
+                {
+                    _algorithmStatus = $"Đã xóa cạnh {edgeLabelToDelete}."; await UpdateGraphInJs(); requiresUiUpdate = false;
+                }
+                else { _algorithmStatus = $"Không tìm thấy cạnh {edgeLabelToDelete} để xóa."; }
+                break;
+            case GraphMode.Edit:
+                Console.WriteLine($"C#: Attempting to edit edge ({fromId}-{toId})");
+                if (_graph.IsWeighted)
+                {
+                    var edge = _graph.Edges.FirstOrDefault(e => (e.From == fromId && e.To == toId) || (!_graph.IsDirected && e.From == toId && e.To == fromId));
+                    if (edge != null)
+                    {
+                        string edgeLabelToEdit = $"({GetNodeLabel(fromId)}-{GetNodeLabel(toId)})";
+                        // --- UPDATED: Call JS helper function ---
+                        string? newWeightStr = await InvokeJsAsync<string>("getEdgeWeightInput", $"Nhập trọng số mới cho cạnh {edgeLabelToEdit}:", edge.Weight.ToString());
+                        // --- END UPDATED ---
+                        if (IsComponentDisposed()) return;
+                        if (newWeightStr != null)
+                        {
+                            if (double.TryParse(newWeightStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double newWeight))
+                            {
+                                if (edge.Weight != newWeight)
+                                {
+                                    edge.Weight = newWeight; _algorithmStatus = $"Đã cập nhật trọng số cạnh {edgeLabelToEdit} thành {newWeight}."; await UpdateGraphInJs(); requiresUiUpdate = false;
+                                }
+                                else { _algorithmStatus = "Trọng số cạnh không đổi."; }
+                            }
+                            else { _algorithmStatus = "Giá trị trọng số không hợp lệ."; }
+                        }
+                        else { _algorithmStatus = "Hủy sửa trọng số cạnh."; }
+                    }
+                    else { _algorithmStatus = "Không tìm thấy cạnh để sửa."; }
+                }
+                else { _algorithmStatus = "Không thể sửa trọng số cạnh trên đồ thị không trọng số."; }
+                break;
+            default: requiresUiUpdate = false; break;
+        }
+        if (requiresUiUpdate && !IsComponentDisposed()) { await InvokeAsync(StateHasChanged); }
+    }
+
+    [JSInvokable]
+    public async Task HandleCanvasClick(double x, double y)
+    {
+        if (IsComponentDisposed()) return;
+        Console.WriteLine($"C#: HandleCanvasClick at ({x:F1}, {y:F1})");
+        bool requiresUiUpdate = true;
+        if (_currentMode == GraphMode.Draw)
+        {
+            if (_drawingEdgeStartNodeId != null)
+            {
+                Console.WriteLine($"C#: Cancelling edge draw from {_drawingEdgeStartNodeId.Value} due to canvas click.");
+                _algorithmStatus = $"Hủy vẽ cạnh từ {GetNodeLabel(_drawingEdgeStartNodeId.Value)}."; _drawingEdgeStartNodeId = null;
+            }
+            else
+            {
+                Console.WriteLine("C#: Adding new node via canvas click.");
+                int nextLabelInt = 1;
+                if (_graph.Nodes.Any())
+                {
+                    nextLabelInt = _graph.Nodes.Values.Select(n => int.TryParse(n.Data?.ToString() ?? "0", out int labelInt) ? labelInt : 0).DefaultIfEmpty(0).Max() + 1;
+                }
+                string newNodeLabel = nextLabelInt.ToString();
+                var newNode = _graph.AddNode(x, y, newNodeLabel);
+                _algorithmStatus = $"Đã thêm nút {GetNodeLabel(newNode.Id)}.";
+                await UpdateGraphInJs(); requiresUiUpdate = false;
+            }
+        }
+        else if (!_isPlayingAlgorithm && (_startNodeId.HasValue || _endNodeId.HasValue))
+        {
+            Console.WriteLine("C#: Clearing algorithm node selection due to canvas click.");
+            _startNodeId = null; _endNodeId = null; _algorithmStatus = "Đã bỏ chọn nút bắt đầu/kết thúc.";
+        }
+        else { requiresUiUpdate = false; }
+        if (requiresUiUpdate && !IsComponentDisposed()) { await InvokeAsync(StateHasChanged); }
+    }
+
+    [JSInvokable]
+    public async Task HandleEdgeDrawn(int fromId, int toId)
+    {
+        if (IsComponentDisposed()) return;
+        Console.WriteLine($"C#: HandleEdgeDrawn called for edge: {fromId} -> {toId}");
+        bool requiresUiUpdate = true;
+        if (_currentMode == GraphMode.Draw && _drawingEdgeStartNodeId.HasValue && _drawingEdgeStartNodeId.Value == fromId)
+        {
+            Console.WriteLine($"C#: Adding edge {fromId} -> {toId}");
+            double weight = _isWeighted ? 1.0 : 0;
+            var newEdge = _graph.AddEdge(fromId, toId, weight);
+            if (newEdge != null)
+            {
+                _algorithmStatus = $"Đã thêm cạnh giữa {GetNodeLabel(fromId)} và {GetNodeLabel(toId)}."; await UpdateGraphInJs(); requiresUiUpdate = false;
+            }
+            else { _algorithmStatus = $"Không thể thêm cạnh ({GetNodeLabel(fromId)}-{GetNodeLabel(toId)}). Có thể đã tồn tại?"; }
+        }
+        else { Console.WriteLine($"Warning: HandleEdgeDrawn called unexpectedly. Mode: {_currentMode}, StartNode: {_drawingEdgeStartNodeId}, FromId: {fromId}"); }
+        _drawingEdgeStartNodeId = null; // Luôn reset trạng thái vẽ
+        if (requiresUiUpdate && !IsComponentDisposed()) { await InvokeAsync(StateHasChanged); }
+    }
+
+    [JSInvokable]
+    public Task UpdateNodePosition(int nodeId, double x, double y)
+    {
+        if (IsComponentDisposed()) return Task.CompletedTask;
+        if (_graph.Nodes.TryGetValue(nodeId, out var node)) { node.X = x; node.Y = y; }
+        return Task.CompletedTask;
+    }
+
+    // ---- Event Handlers for UI Controls ----
+    private async Task OnGraphTypeChanged(bool isDirected)
+    {
+        if (IsComponentDisposed()) return;
+        _isDirected = isDirected; _graph.IsDirected = isDirected;
+        _algorithmStatus = $"Đồ thị được đặt thành {(_isDirected ? "Có hướng" : "Vô hướng")}.";
+        await UpdateGraphInJs();
+    }
+
+    private async Task OnGraphWeightChanged(bool isWeighted)
+    {
+        if (IsComponentDisposed()) return;
+        _isWeighted = isWeighted; _graph.IsWeighted = isWeighted;
+        _algorithmStatus = $"Đồ thị được đặt thành {(_isWeighted ? "Có trọng số" : "Không trọng số")}.";
+        await UpdateGraphInJs();
+    }
+
+    private async Task ClearGraph()
+    {
+        if (IsComponentDisposed()) return;
+        _graph = CreateDefaultGraphWithNumbers();
+        _graph.IsDirected = _isDirected; _graph.IsWeighted = _isWeighted;
+        ResetAlgorithmStateAndUI();
+        await UpdateGraphInJs();
+    }
+
+    private async Task CreateGraphFromInput()
+    {
+        if (IsComponentDisposed()) return;
+        try
+        {
+            _graph = Graph<string, object>.CreateFromEdgeList(_graphInputData, _isDirected, _isWeighted);
+            _algorithmStatus = "Đã tạo đồ thị thành công."; ResetAlgorithmStateAndUI();
+            await UpdateGraphInJs();
+        }
+        catch (Exception ex)
+        {
+            _algorithmStatus = $"Lỗi khi tạo đồ thị: {ex.Message}"; ResetAlgorithmStateAndUI();
+            if (!IsComponentDisposed()) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task OnAlgorithmSelected(AlgorithmType type)
+    {
+        if (IsComponentDisposed()) return Task.CompletedTask;
+        _selectedAlgorithm = type;
+        _requiresStartNode = type == AlgorithmType.DFS || type == AlgorithmType.BFS || type == AlgorithmType.Dijkstra || type == AlgorithmType.Prim;
+        _requiresEndNode = type == AlgorithmType.Dijkstra;
+        ResetAlgorithmStateAndUI();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private bool CanRunAlgorithm()
+    {
+        _algorithmStatus = string.Empty;
+        if (_selectedAlgorithm == AlgorithmType.None) { return false; }
+        if (_graph.Nodes.Count == 0) { _algorithmStatus = "Không thể chạy thuật toán trên đồ thị trống."; return false; }
+        if (_requiresStartNode && !_startNodeId.HasValue && _selectedAlgorithm != AlgorithmType.Prim) { _algorithmStatus = "Vui lòng chọn một nút bắt đầu."; return false; }
+        if (_requiresEndNode && !_endNodeId.HasValue) { _algorithmStatus = "Vui lòng chọn một nút kết thúc."; return false; }
+        bool needsWeighted = _selectedAlgorithm == AlgorithmType.Dijkstra || _selectedAlgorithm == AlgorithmType.Prim || _selectedAlgorithm == AlgorithmType.Kruskal;
+        if (needsWeighted && !_isWeighted) { _algorithmStatus = $"Thuật toán {_selectedAlgorithm} yêu cầu đồ thị có trọng số."; return false; }
+        bool needsUndirected = _selectedAlgorithm == AlgorithmType.Kruskal || _selectedAlgorithm == AlgorithmType.Prim || _selectedAlgorithm == AlgorithmType.CheckEuler;
+        if (needsUndirected && _isDirected) { _algorithmStatus = $"Thuật toán {_selectedAlgorithm} thường chạy trên đồ thị vô hướng (sẽ coi như vô hướng)."; }
+        return true;
+    }
+
+    // --- UPDATED: Added SetModeAndNotify method ---
+    private async Task SetModeAndNotify(GraphMode newMode)
+    {
+        if (_currentMode != newMode)
+        {
+            Console.WriteLine($"C#: Changing mode from {_currentMode} to {newMode}");
+            _currentMode = newMode;
+            _isPlayingAlgorithm = false;
+            _algorithmStatus = string.Empty;
+            _drawingEdgeStartNodeId = null; // Reset drawing state when changing mode
+
+            if (!IsComponentDisposed())
+            {
+                await SetJsMode(); // Gọi JS để cập nhật mode
+                await ResetVisualization(); // Reset highlight
+                await InvokeAsync(StateHasChanged); // Cập nhật UI (để đổi ButtonStyle)
+            }
+        }
+    }
+
+    private async Task RunAlgorithm()
+    {
+        if (IsComponentDisposed() || !CanRunAlgorithm()) { if (!IsComponentDisposed()) await InvokeAsync(StateHasChanged); return; }
+        _graph.ResetAlgorithmState(); _algorithmSteps.Clear(); _currentStepIndex = -1;
+        _isPlayingAlgorithm = true;
+        if (string.IsNullOrEmpty(_algorithmStatus)) { _algorithmStatus = $"Đang chạy {_selectedAlgorithm}..."; }
+        if (!IsComponentDisposed()) await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // REVIEW: Ensure correct namespace for algorithm classes
+            switch (_selectedAlgorithm)
+            {
+                case AlgorithmType.DFS: var dfsRunner = new Traversal<string, object>(_graph); _algorithmSteps = dfsRunner.DFS(_startNodeId.Value); break;
+                case AlgorithmType.BFS: var bfsRunner = new Traversal<string, object>(_graph); _algorithmSteps = bfsRunner.BFS(_startNodeId.Value); break;
+                case AlgorithmType.Dijkstra: var dijkstraRunner = new Pathfinding<string, object>(_graph); _algorithmSteps = dijkstraRunner.Dijkstra(_startNodeId.Value, _endNodeId.Value); break;
+                case AlgorithmType.Kruskal: var kruskalRunner = new SpanningTree<string, object>(_graph); _algorithmSteps = kruskalRunner.Kruskal(); break;
+                case AlgorithmType.Prim: var primRunner = new SpanningTree<string, object>(_graph); _algorithmSteps = primRunner.Prim(_startNodeId); break;
+                case AlgorithmType.CheckEuler: var eulerChecker = new CycleDetection<string, object>(_graph); _algorithmSteps = eulerChecker.CheckEulerian(); break;
+                case AlgorithmType.FindHamiltonianPath: var hamiltonFinder = new CycleDetection<string, object>(_graph); _algorithmSteps = hamiltonFinder.FindHamiltonianPath(); _algorithmStatus = "Tìm đường đi Hamilton có thể chậm với đồ thị lớn."; break;
+                default: _algorithmStatus = "Thuật toán được chọn chưa được triển khai."; _isPlayingAlgorithm = false; break;
+            }
+            if (_algorithmSteps.Any())
+            {
+                _currentStepIndex = 0; await ApplyAlgorithmStep(_algorithmSteps[_currentStepIndex]);
+                if (!IsComponentDisposed() && !string.IsNullOrEmpty(_algorithmSteps.LastOrDefault()?.Description)) _algorithmStatus = _algorithmSteps.Last().Description;
+            }
+            else if (_isPlayingAlgorithm) { _algorithmStatus = "Thuật toán hoàn thành ngay lập tức (không có bước trực quan hóa)."; _isPlayingAlgorithm = false; }
+        }
+        catch (Exception ex)
+        {
+            _algorithmStatus = $"Lỗi khi chạy {_selectedAlgorithm}: {ex.Message}"; _isPlayingAlgorithm = false; _algorithmSteps.Clear();
+            Console.WriteLine($"Algorithm Error: {ex}");
+        }
+        if (!IsComponentDisposed()) await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task NextAlgorithmStep()
+    {
+        if (IsComponentDisposed() || !_isPlayingAlgorithm || _currentStepIndex >= _algorithmSteps.Count - 1) return;
+        _currentStepIndex++;
+        await ApplyAlgorithmStep(_algorithmSteps[_currentStepIndex]);
+        if (!IsComponentDisposed()) await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApplyAlgorithmStep(AlgorithmStep<string, object> step)
+    {
+        if (IsComponentDisposed()) return;
+        _algorithmStatus = step.Description;
+        var highlightData = new { nodes = step.HighlightedNodes, edges = step.HighlightedEdges.Select(e => new { from = e.from, to = e.to }).ToList(), nodeLabels = step.NodeLabels };
+        await InvokeJsVoidAsync("highlightElements", highlightData);
+    }
+
+    private void ResetAlgorithmStateAndUI()
+    {
+        _isPlayingAlgorithm = false; _algorithmStatus = string.Empty; _algorithmSteps.Clear();
+        _currentStepIndex = -1; _startNodeId = null; _endNodeId = null;
+        _nodeDegreesInfo = null; _showDegreeClicked = false;
+        _drawingEdgeStartNodeId = null;
+    }
+
+    private async Task ResetVisualization()
+    {
+        ResetAlgorithmStateAndUI();
+        await InvokeJsVoidAsync("resetHighlights");
+        if (!IsComponentDisposed()) await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ShowNodeDegrees()
+    {
+        _showDegreeClicked = true;
+        try
+        {
+            _nodeDegreesInfo = new Dictionary<int, int>();
+            foreach (int nodeId in _graph.Nodes.Keys) { _nodeDegreesInfo[nodeId] = _graph.GetDegree(nodeId); }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting degrees: {ex.Message}"); _algorithmStatus = "Lỗi tính toán bậc."; _nodeDegreesInfo = null;
+        }
+        if (!IsComponentDisposed()) await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _isDisposed = true;
+        var helper = _dotNetHelper; _dotNetHelper = null; helper?.Dispose();
+        var module = _jsModule; _jsModule = null;
+        if (module != null)
+        {
+            try { await module.DisposeAsync(); }
+            catch (Exception ex) when (ex is JSDisconnectedException || ex is ObjectDisposedException || ex is InvalidOperationException)
+            { Console.WriteLine($"Ignoring error during JS Module disposal: {ex.Message}"); }
+            catch (Exception ex) { Console.WriteLine($"Error disposing JS Module: {ex.Message}"); }
+        }
+        GC.SuppressFinalize(this);
+    }
+}

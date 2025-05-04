@@ -1,0 +1,51 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+
+<link href="css/style.css" rel="stylesheet" /> @*Thêm CSS style *@
+
+<PageTitle>Cấu trúc dữ liệu và giải thuật</PageTitle>
+
+<RadzenCard Style="margin-bottom: 20px;">
+    @* Bọc nội dung trong Card để có khung viền và nền nếu muốn *@
+    <RadzenHeading Size="H1" Text="Cấu trúc dữ liệu và giải thuật" style=" color: #5A007D;font-weight: bold; text-align: center; display: block " /> @* có thể điều chỉnh mã màu, hiện tại muốn đổi style qua CSS mà hỏng có được  *@ 
+</RadzenCard>
+
+<RadzenCard Style="margin-bottom: 20px;">
+    @* Sử dụng dấu ▶ hoặc một icon nếu muốn *@
+    <RadzenHeading Size="H3" Text="▶ 1. Cấu trúc dữ liệu và giải thuật là gì" Style="color: #007D4F; font-weight: bold;" /> @* Màu xanh lá giống ảnh *@
+    <RadzenText TextStyle="TextStyle.Body1" TagName="TagName.P" Class="rz-mb-4">
+        @* Thêm class margin bottom nếu cần *@
+        Đây là nơi bạn sẽ viết nội dung chi tiết giải thích về khái niệm Cấu trúc dữ liệu và Giải thuật.
+        Cấu trúc dữ liệu là cách tổ chức, quản lý và lưu trữ dữ liệu để cho phép truy cập và sửa đổi hiệu quả.
+        Giải thuật là một tập hợp các hướng dẫn hoặc quy tắc được xác định rõ ràng để giải quyết một vấn đề hoặc thực hiện một nhiệm vụ cụ thể.
+    </RadzenText>
+    @* Chèn ảnh vào đây *@
+    <img src="images/Home1.jpg" alt="Cấu trúc dữ liệu và giải thuật là gì" style="max-width: 50%; height: auto; display: block; margin-left: auto; margin-right: auto;" />  @* Chèn ảnh và căn chỉnh ảnh vào giữa khung hình *@
+</RadzenCard>
+
+<RadzenCard Style="margin-bottom: 20px;">
+    <RadzenHeading Size="H3" Text="▶ 2. Tầm quan trọng của cấu trúc dữ liệu và giải thuật" Style="color: #007D4F; font-weight: bold;" />
+    <RadzenText TextStyle="TextStyle.Body1" TagName="TagName.P" Class="rz-mb-4">
+        Nội dung giải thích tầm quan trọng của CTDL & GT. Ví dụ: Chúng giúp tối ưu hóa hiệu suất chương trình,
+        quản lý tài nguyên hiệu quả, giải quyết các vấn đề phức tạp một cách có hệ thống, và là nền tảng
+        cho nhiều lĩnh vực trong khoa học máy tính. Đoạn text trong ảnh bạn cung cấp minh họa rất rõ điều này.
+        Bạn có thể diễn giải lại hoặc trích dẫn ví dụ tương tự.
+    </RadzenText>
+    @* Chèn ảnh ví dụ nếu có *@
+    <img src="images/image_a1e8f9.png" alt="Tầm quan trọng của CTDL-GT" style="max-width: 80%; height: auto; display: block; margin-left: auto; margin-right: auto;" />
+    <RadzenText TextStyle="TextStyle.Caption" TagName="TagName.P" Style="text-align:center;">Ảnh minh họa tầm quan trọng (Lấy từ file bạn cung cấp)</RadzenText>
+</RadzenCard>
+
+<RadzenCard Style="margin-bottom: 20px;">
+    <RadzenHeading Size="H3" Text="▶ 3. Giới thiệu về dự án" Style="color: #007D4F; font-weight: bold;" />
+    <RadzenText TextStyle="TextStyle.Body1" TagName="TagName.P" Class="rz-mb-4">
+        Giới thiệu ngắn gọn về mục tiêu và nội dung của dự án này.
+        Ví dụ: Dự án này minh họa các Cấu trúc dữ liệu và Giải thuật cơ bản thông qua các ví dụ thực tế
+        sử dụng ngôn ngữ C# và thư viện Radzen Blazor để trực quan hóa...
+    </RadzenText>
+</RadzenCard>
+
+@code {
+    // Có thể thêm mã C# ở đây nếu cần xử lý logic
+}}

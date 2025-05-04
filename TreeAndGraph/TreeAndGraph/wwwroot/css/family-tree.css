@@ -1,0 +1,165 @@
+﻿/* File: wwwroot/css/pages/FamilyTreeDisplay.razor.css */
+
+/* Container chính của cây */
+.family-tree-container {
+    padding: 20px;
+    overflow-x: auto; /* Cho phép cuộn ngang nếu cây quá rộng */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa; /* Nền nhạt cho khu vực cây */
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    min-height: 400px; /* Chiều cao tối thiểu */
+}
+
+/* Định dạng cơ bản cho cây, sử dụng flexbox để sắp xếp */
+.tree {
+    display: inline-flex; /* Để container co lại theo nội dung */
+    flex-direction: column;
+    align-items: center; /* Căn giữa nút gốc */
+    min-width: 100%; /* Đảm bảo chiếm đủ không gian ban đầu */
+    padding-bottom: 20px; /* Khoảng trống dưới cùng */
+}
+
+/* Định dạng cho một nút gia đình (cặp đôi + con cái) */
+.node-family {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Căn giữa nội dung node và các nhánh con */
+    margin: 10px; /* Giảm margin */
+    position: relative; /* Cần thiết cho việc vẽ đường nối */
+}
+
+/* Định dạng cho hộp chứa thông tin của một cặp đôi */
+.node-content {
+    border: 1px solid #4CAF50; /* Viền xanh lá */
+    padding: 12px 18px; /* Tăng padding */
+    border-radius: 8px;
+    background-color: #ffffff; /* Nền trắng */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Thêm bóng đổ nhẹ */
+    min-width: 220px; /* Tăng chiều rộng tối thiểu */
+    text-align: left;
+    position: relative; /* Để chứa các nút action */
+    transition: box-shadow 0.2s ease-in-out, transform 0.1s ease-in-out;
+    margin-bottom: 40px; /* Khoảng cách lớn hơn giữa cha mẹ và đường nối xuống con */
+    cursor: default; /* Con trỏ mặc định */
+}
+
+    .node-content:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        /* transform: translateY(-2px); */ /* Hiệu ứng nhấc lên nhẹ khi hover */
+    }
+
+
+.generation-label {
+    font-weight: bold;
+    font-size: 0.9em;
+    color: #1b5e20; /* Màu xanh lá đậm */
+    margin-bottom: 8px;
+    border-bottom: 1px solid #a5d6a7; /* Đường kẻ mờ */
+    padding-bottom: 5px;
+    text-align: center;
+}
+
+.person-info {
+    margin-bottom: 5px; /* Khoảng cách giữa các dòng thông tin */
+    font-size: 0.95em;
+}
+
+    .person-info.male {
+        color: #0277bd; /* Màu xanh dương cho nam */
+        font-weight: 500;
+    }
+
+    .person-info.female {
+        color: #c2185b; /* Màu hồng cho nữ */
+    }
+
+/* Container cho các nhánh con */
+.children-container {
+    display: flex; /* Sắp xếp các con theo hàng ngang */
+    justify-content: center; /* Căn giữa các con */
+    position: relative; /* Cần cho đường nối */
+    padding-top: 40px; /* Khoảng cách lớn hơn từ đường nối ngang xuống các con */
+}
+
+/* --- Vẽ đường nối (Sử dụng pseudo-elements) --- */
+
+/* Đường thẳng đứng từ node cha/mẹ xuống đường ngang nối các con */
+/* Chỉ vẽ nếu node đó có con */
+.node-family:has(.children-container) > .node-content::after {
+    content: '';
+    position: absolute;
+    bottom: -40px; /* Đi xuống dưới node */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px; /* Độ dày đường kẻ */
+    height: 40px; /* Chiều cao đường kẻ */
+    background-color: #bdbdbd; /* Màu xám */
+    z-index: 0; /* Đưa ra sau các node con một chút */
+}
+
+/* Đường ngang nối các node con */
+/* Chỉ vẽ nếu có nhiều hơn 1 con */
+.children-container:has(.node-family + .node-family)::before {
+    content: '';
+    position: absolute;
+    top: 0; /* Nằm ngay trên đầu container con */
+    /* Tính toán left/right để đường ngang chỉ nối các con thực tế */
+    left: calc(50% / var(--child-count, 1)); /* Cần tính toán động hoặc ước lượng */
+    right: calc(50% / var(--child-count, 1));
+    /* Hoặc đơn giản hơn: */
+    /* left: 15%; */
+    /* right: 15%; */
+    /* Cách chính xác hơn là tính toán dựa trên vị trí con đầu và con cuối */
+    height: 2px; /* Độ dày đường kẻ */
+    background-color: #bdbdbd; /* Màu xám */
+    z-index: 0;
+}
+/* Cần Javascript để tính toán chính xác left/right cho đường ngang nếu muốn hoàn hảo */
+/* Tạm thời dùng % ước lượng */
+.children-container[style*="--child-count"]:before {
+    left: calc(100% / (var(--child-count) * 2));
+    right: calc(100% / (var(--child-count) * 2));
+}
+/* Nếu chỉ có 1 con, không cần đường ngang */
+.children-container:not(:has(.node-family + .node-family))::before {
+    display: none;
+}
+
+
+/* Đường thẳng đứng từ đường ngang lên từng node con */
+/* Chỉ vẽ cho các node con (không phải nút gốc) */
+.children-container > .node-family > .node-content::before {
+    content: '';
+    position: absolute;
+    top: -40px; /* Đi từ trên node-content lên */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 40px;
+    background-color: #bdbdbd;
+    z-index: 0;
+}
+
+
+/* --- Kiểu cho các nút hành động --- */
+.node-actions {
+    position: absolute;
+    top: 8px; /* Dịch lên chút */
+    right: 8px;
+    display: flex;
+    gap: 6px; /* Khoảng cách giữa các nút */
+    opacity: 0; /* Ẩn ban đầu */
+    transition: opacity 0.2s ease-in-out;
+}
+
+.node-content:hover .node-actions {
+    opacity: 1; /* Hiển thị khi hover vào node */
+}
+
+.action-button.rz-button.rz-button-sm {
+    /* Radzen small button mặc định khá nhỏ, có thể tăng kích thước nếu muốn */
+    /* width: 28px; */
+    /* height: 28px; */
+    /* font-size: 16px; */
+}

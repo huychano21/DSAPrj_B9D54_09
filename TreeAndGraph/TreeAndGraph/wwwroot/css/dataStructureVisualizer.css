@@ -1,0 +1,285 @@
+﻿/* wwwroot/css/dataStructureVisualizer.css */
+
+:root {
+    --item-height: 40px;
+    --item-width-stack: 90px; /* Stack items can be wider */
+    --item-width-queue-list: 60px; /* Queue/List items narrower for horizontal view */
+    --item-margin: 5px;
+    --animation-duration: 0.4s;
+    --primary-color: #007bff;
+    --primary-border: #0056b3;
+    --secondary-color: #6c757d;
+    --bg-color: #f8f9fa;
+    --info-bg-color: #ffffff;
+    --container-border-color: #6c757d;
+}
+
+/* --- General Structure --- */
+.visualization-section {
+    margin-bottom: 20px;
+}
+
+.controls-area {
+    margin-bottom: 15px;
+}
+
+.display-area {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    min-height: 250px;
+    padding: 10px;
+    background-color: var(--bg-color);
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+/* --- Info Boxes --- */
+.info-box {
+    border: 1px solid #ced4da;
+    padding: 15px;
+    border-radius: 5px;
+    background-color: var(--info-bg-color);
+    min-width: 150px;
+    height: fit-content;
+}
+
+    .info-box h5 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        color: #495057;
+    }
+
+    .info-box p {
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+        word-wrap: break-word;
+    }
+
+    .info-box .label {
+        color: #495057;
+        display: inline-block;
+        min-width: 60px;
+    }
+
+    .info-box .value {
+        font-weight: bold;
+        color: var(--primary-color);
+        min-height: 1.2em;
+        display: inline-block;
+    }
+
+        .info-box .value.empty {
+            color: var(--secondary-color);
+            font-style: italic;
+        }
+
+/* --- Stack Specific --- */
+.stack-container {
+    border: 2px solid var(--container-border-color);
+    border-top: none;
+    width: calc(var(--item-width-stack) + 10px);
+    min-height: 230px;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: column-reverse;
+    padding: 5px;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+}
+
+.stack-item {
+    /* Copied from .item-base */
+    color: white;
+    height: var(--item-height);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    opacity: 1;
+    transform: translate(0, 0);
+    border-radius: 3px;
+    /* Stack specific */
+    background-color: var(--primary-color);
+    border: 1px solid var(--primary-border);
+    width: var(--item-width-stack);
+    margin-top: var(--item-margin);
+    transition: background-color 0.2s ease-in-out, opacity var(--animation-duration) ease-in-out, transform var(--animation-duration) ease-in-out;
+}
+
+@keyframes stack-push-animation {
+    from {
+        opacity: 0;
+        transform: translateY(calc(-0.5 * var(--item-height)));
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stack-item-push {
+    animation: stack-push-animation var(--animation-duration) ease-in-out forwards;
+}
+
+@keyframes stack-pop-animation {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(calc(-0.5 * var(--item-height)));
+    }
+}
+
+.stack-item-pop {
+    animation: stack-pop-animation var(--animation-duration) ease-in-out forwards;
+}
+
+/* --- Queue Specific --- */
+.queue-container {
+    border: 2px solid var(--container-border-color);
+    border-left: none;
+    border-right: none;
+    height: calc(var(--item-height) + 10px);
+    min-width: 200px;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 5px;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+}
+
+.queue-item {
+    /* Copied from .item-base */
+    color: white;
+    height: var(--item-height);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    opacity: 1;
+    transform: translate(0, 0);
+    border-radius: 3px;
+    /* Queue specific */
+    background-color: #28a745;
+    border: 1px solid #1e7e34;
+    width: var(--item-width-queue-list);
+    margin-right: var(--item-margin);
+    transition: background-color 0.2s ease-in-out, opacity var(--animation-duration) ease-in-out, transform var(--animation-duration) ease-in-out;
+}
+
+@keyframes queue-enqueue-animation {
+    from {
+        opacity: 0;
+        transform: translateX(calc(0.5 * var(--item-width-queue-list)));
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.queue-item-enqueue {
+    animation: queue-enqueue-animation var(--animation-duration) ease-in-out forwards;
+}
+
+@keyframes queue-dequeue-animation {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(calc(-0.5 * var(--item-width-queue-list)));
+    }
+}
+
+.queue-item-dequeue {
+    animation: queue-dequeue-animation var(--animation-duration) ease-in-out forwards;
+}
+
+/* --- List Specific --- */
+.list-container {
+    border: 2px solid var(--container-border-color);
+    height: calc(var(--item-height) + 10px);
+    min-width: 200px;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 5px;
+    box-sizing: border-box;
+    position: relative;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.list-item {
+    /* Copied from .item-base */
+    color: white;
+    height: var(--item-height);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    opacity: 1;
+    transform: translate(0, 0);
+    border-radius: 3px;
+    /* List specific */
+    background-color: #ffc107;
+    border: 1px solid #d39e00;
+    color: #343a40;
+    width: var(--item-width-queue-list);
+    margin-right: var(--item-margin);
+    transition: background-color 0.2s ease-in-out, opacity var(--animation-duration) ease-in-out, transform var(--animation-duration) ease-in-out;
+    position: relative;
+}
+
+@keyframes list-add-animation {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.list-item-add {
+    animation: list-add-animation var(--animation-duration) ease-out forwards;
+}
+
+@keyframes list-remove-animation {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+.list-item-remove {
+    animation: list-remove-animation var(--animation-duration) ease-in forwards;
+}

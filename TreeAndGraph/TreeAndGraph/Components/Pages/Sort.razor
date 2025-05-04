@@ -1,0 +1,190 @@
+﻿@page "/sortVitualizer"
+@rendermode InteractiveServer
+
+<PageTitle> SortAlgorithm </PageTitle>
+
+<h1> Thuật toán Sắp xếp</h1>
+
+ <link href="css/style.css" rel="stylesheet" /> 
+<link href="css/sortingVisualizer.css" rel="stylesheet" /> @*Thêm CSS style *@
+
+<div class="input-section">
+
+    <div class="input-group">
+        <RadzenLabel Text="Số lượng phần tử (tối đa 100):" />
+        <RadzenNumeric TValue="int" @bind-Value="@_arraySize" Min="1" Max="100" Change="@OnSizeChanged" Style="width: 150px;" Name="ArraySizeInput" />
+    </div>
+
+    <div class="input-group" style="flex-grow: 1;">
+        <RadzenLabel Text="Nhập các phần tử (số nguyên, cách nhau bởi dấu phẩy):" />
+        <RadzenTextBox @bind-Value="@_inputString" @bind-Value:event="oninput" Placeholder="Ví dụ: 5, 2, 8, 1, 9" Style="width: 100%;" Name="ElementsInput" />
+        @if (!string.IsNullOrEmpty(_inputError))
+        {
+            <RadzenText Text="@_inputError" TextStyle="TextStyle.Subtitle2" TextAlign="TextAlign.Left" Style="color: red; margin-top: 5px;" />
+        }
+    </div>
+
+    <RadzenButton Text="Sinh ngẫu nhiên" Click="@GenerateRandom" ButtonStyle="ButtonStyle.Secondary" Disabled="@(_arraySize <= 0)" Icon="casino" />
+    <RadzenButton Text="Xác nhận & Hiển thị" Click="@InitializeArray" ButtonStyle="ButtonStyle.Primary" Disabled="@(string.IsNullOrEmpty(_inputString) || !string.IsNullOrEmpty(_inputError) || _isSorting)" Icon="check" />
+</div>
+
+@if (_items != null && _items.Any())
+{
+    <div class="button-section">
+        <RadzenButton Text="Bubble Sort" Click="@(() => SelectAlgorithm("BubbleSort"))" Disabled="@_isSorting" Icon="sort_by_alpha" ButtonStyle="ButtonStyle.Info" />
+        <RadzenButton Text="Selection Sort" Click="@(() => SelectAlgorithm("SelectionSort"))" Disabled="@_isSorting" Icon="sort" ButtonStyle="ButtonStyle.Info" />
+        <RadzenButton Text="Insertion Sort" Click="@(() => SelectAlgorithm("InsertionSort"))" Disabled="@_isSorting" Icon="vertical_align_bottom" ButtonStyle="ButtonStyle.Info" />
+        <RadzenButton Text="Quick Sort" Click="@(() => SelectAlgorithm("QuickSort"))" Disabled="@_isSorting" Icon="flash_on" ButtonStyle="ButtonStyle.Info" />
+        <RadzenButton Text="Merge Sort" Click="@(() => SelectAlgorithm("MergeSort"))" Disabled="@_isSorting" Icon="merge_type" ButtonStyle="ButtonStyle.Info" />
+        <RadzenButton Text="Heap Sort" Click="@(() => SelectAlgorithm("HeapSort"))" Disabled="@_isSorting" Icon="account_tree" ButtonStyle="ButtonStyle.Info" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_selectedAlgorithmName))
+    {
+        <div class="visualization-options" style="margin-top: 15px;">
+            <RadzenLabel Text="Chế độ xem:" />
+            @if (_selectedAlgorithmName != "MergeSort" && _selectedAlgorithmName != "HeapSort")
+            {
+                <RadzenRadioButtonList @bind-Value="@_visualizationMode" TValue="string" Change="@(() => ResetVisualization())" Disabled="@_isSorting">
+                    <Items>
+                        <RadzenRadioButtonListItem Text="Thanh (Bar)" Value="@("bar")" />
+                        <RadzenRadioButtonListItem Text="Mảng (Array)" Value=@("array") />
+                    </Items>
+                </RadzenRadioButtonList>
+            }
+            else if (_selectedAlgorithmName == "MergeSort")
+            {
+                <RadzenText Text="Mảng (Array)" />
+                @* <RadzenRadioButtonList @bind-Value="@_visualizationMode" TValue="string" Disabled="true">
+                     <Items> <RadzenRadioButtonListItem Text="Mảng (Array)" Value="'array'" Selected="true"/> </Items>
+                 </RadzenRadioButtonList> *@
+            }
+            else if (_selectedAlgorithmName == "HeapSort")
+            {
+                <RadzenText Text="Cây nhị phân (Heap Tree)" />
+                @* <RadzenRadioButtonList @bind-Value="@_visualizationMode" TValue="string" Disabled="true">
+                     <Items> <RadzenRadioButtonListItem Text="Cây nhị phân (Heap Tree)" Value="'heap'" Selected="true"/> </Items>
+                 </RadzenRadioButtonList> *@
+            }
+        </div>
+
+        <div class="controls">
+            <RadzenButton Text="Chạy tự động" Click="@RunAutomatically" Disabled="@(_isSorting || _currentStepIndex >= _sortSteps.Count - 1)" Icon="play_arrow" ButtonStyle="ButtonStyle.Success" />
+            <RadzenButton Text="Dừng" Click="@StopAutomaticRun" Disabled="@(!_isSorting)" Icon="pause" ButtonStyle="ButtonStyle.Warning" />
+            <RadzenButton Text="Bước tiếp theo" Click="@NextStep" Disabled="@(_isSorting || _currentStepIndex >= _sortSteps.Count - 1)" Icon="skip_next" />
+            <RadzenButton Text="Reset" Click="@ResetVisualization" Disabled="@_isSorting" Icon="refresh" ButtonStyle="ButtonStyle.Light" />
+            <RadzenLabel Text="Tốc độ (ms):" />
+            <RadzenNumeric TValue="int" @bind-Value="@_autoRunDelay" Min="50" Max="2000" Step="50" Disabled="@_isSorting" Style="width: 100px;" />
+        </div>
+
+        <div class="sort-container">
+            <div class="visualization-area">
+                @if (_currentDisplayItems != null && _currentDisplayItems.Any())
+                {
+                    switch (_visualizationMode)
+                    {
+                        case "bar":
+                            <div class="bar-visualization">
+                                @if (_currentDisplayItems != null){
+                                            @foreach (var item in _currentDisplayItems)
+                                        {
+                                            <div class="@GetItemCssClass(item)"
+                                                 style="height: @(CalculateBarHeightPixels(item.Value))px;"
+                                                 id="@item.Id"
+                                                 title="@($"Giá trị: {item.Value}")">
+                                                @* <span class="bar-value-on-bar">@item.Value</span> *@
+                                            </div>
+                                        }
+                                }
+                            </div>
+                            <div class="bar-label-container">
+                                @* Hàng giá trị thứ nhất *@
+                                <div class="bar-label-row">
+                                    @if (_currentDisplayItems != null)
+                                    {
+                                        @foreach (var item in _currentDisplayItems)
+                                        {
+                                            <div class="bar-label-item">
+                                                <span class="bar-value-primary">@item.Value</span>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                                @* Hàng giá trị thứ hai (giống hàng 1) *@
+                                <div class="bar-label-row">
+                                    @if (_currentDisplayItems != null)
+                                    {
+                                        @foreach (var item in _currentDisplayItems)
+                                        {
+                                            <div class="bar-label-item">
+                                                <span class="bar-value-secondary">@item.Value</span>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                            
+                            break;
+                        case "array":
+                            <div class="array-visualization">
+                                @foreach (var (item, index) in _currentDisplayItems.Select((item, index) => (item, index)))
+                                {
+                                    <div class="@GetItemCssClass(item)" id="@item.Id">
+                                        <span class="array-index">@index</span>
+                                        @item.Value
+                                    </div>
+                                }
+                            </div>
+                            break;
+                        case "heap":
+                            <div class="heap-visualization">
+                                <RadzenText TextStyle="TextStyle.H6" Style="color: red;">(Trực quan hóa Heap Sort dạng cây chưa được triển khai đầy đủ)</RadzenText>
+                                <svg width="100%" height="350">
+                                    @* <line x1="150" y1="80" x2="100" y2="150" class="heap-edge" />
+                                    <line x1="150" y1="80" x2="200" y2="150" class="heap-edge" />
+                                    <g class="heap-node">
+                                        <circle cx="150" cy="80" r="20" fill="dodgerblue" />
+                                        <text x="150" y="80">50</text>
+                                    </g>
+                                    <g class="heap-node">
+                                        <circle cx="100" cy="150" r="20" fill="dodgerblue" />
+                                        <text x="100" y="150">30</text>
+                                    </g>
+                                     <g class="heap-node">
+                                        <circle cx="200" cy="150" r="20" fill="dodgerblue" />
+                                        <text x="200" y="150">20</text>
+                                    </g> *@
+                                </svg>
+                            </div>
+                            break;
+                    }
+                }
+                else
+                {
+                    <RadzenText>Chưa có dữ liệu để hiển thị.</RadzenText>
+                }
+            </div>
+
+            <div class="description-area" id="descriptionPanel">
+                <h5>Các bước thực hiện (@(_currentStepIndex + 1) / @_sortSteps.Count):</h5>
+                @if (_sortSteps != null && _currentStepIndex >= 0 && _currentStepIndex < _sortSteps.Count)
+                {
+                    <p>@_sortSteps[_currentStepIndex].Description</p>
+                }
+                else if (_sortSteps != null && _sortSteps.Any())
+                {
+                    <p>Bấm "Chạy" hoặc "Bước tiếp theo" để bắt đầu.</p>
+                }
+                else
+                {
+                    <p>Chọn một thuật toán để bắt đầu.</p>
+                }
+            </div>
+        </div>
+    }
+}
+
+<RadzenDialog />
+<RadzenNotification />
+<RadzenTooltip />
+<RadzenContextMenu />

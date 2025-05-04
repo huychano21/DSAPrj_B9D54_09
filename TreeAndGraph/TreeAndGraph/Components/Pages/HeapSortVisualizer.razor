@@ -1,0 +1,179 @@
+﻿@page "/heapsort"
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@using System.Linq
+
+<link href="css/style.css" rel="stylesheet" />
+<h3 class="text-2xl font-bold mb-4">HeapSort </h3>
+
+<div class="mb-4">
+    <RadzenTextBox @bind-Value="userInput" Placeholder="Nhập dãy số cách nhau bởi dấu phẩy, ví dụ: 4,10,3,5,1,7" Style="width: 100%;" />
+</div>
+
+<RadzenButton Text="Start HeapSort" Click="StartHeapSort" Style="margin-right: 10px;" Disabled="isLoading" />
+<RadzenButton Text="Next Step" Click="NextStep" Style="margin-right: 10px;" Disabled="isLoading || originalArray == null || currentStep >= steps.Count" />
+<RadzenButton Text="Reset" Click="ResetVisualization" ButtonStyle="ButtonStyle.Secondary" Disabled="isLoading || originalArray == null" />
+
+@if (isLoading)
+{
+    <p>Đang xử lý...</p>
+}
+
+<div id="tree-container" style="height: 600px; margin-top: 20px; border: 1px solid #ccc;"></div>
+
+@code {
+    string userInput = "4,10,3,5,1,7";
+    int[]? originalArray; // Nullable initially
+    List<(int[] ArrayState, int Highlight1, int Highlight2)> steps = new();
+    int currentStep = 0;
+    bool isLoading = false; // Flag to disable buttons during processing
+
+    async Task StartHeapSort()
+    {
+        isLoading = true;
+        StateHasChanged(); // Update UI to show loading/disable buttons
+
+        if (!TryParseInput(userInput, out originalArray) || originalArray == null || originalArray.Length == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Dữ liệu không hợp lệ! Vui lòng nhập các số cách nhau bằng dấu phẩy.");
+            originalArray = null; // Reset if invalid
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        // Draw the initial tree based on user input *before* sorting starts
+        await JS.InvokeVoidAsync("drawTree", originalArray, -1, -1);
+
+        // Calculate all the steps based on a copy of the original array
+        steps = HeapSortSteps(originalArray.ToArray()); // Use ToArray() to create a copy
+        currentStep = 0; // Reset step counter for NextStep
+
+        isLoading = false;
+        StateHasChanged(); // Update UI
+    }
+
+    async Task NextStep()
+    {
+        if (originalArray == null || currentStep >= steps.Count) return; // Safety check
+
+        isLoading = true;
+        StateHasChanged();
+
+        var step = steps[currentStep];
+        await JS.InvokeVoidAsync("drawTree", step.ArrayState, step.Highlight1, step.Highlight2); // Draw tree at the current step
+        currentStep++; // Move to the next step *after* drawing
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    async Task ResetVisualization()
+    {
+        if (originalArray == null) // If no valid array was ever parsed
+        {
+            // Optionally clear the tree visualization
+            await JS.InvokeVoidAsync("clearTree"); // Need to implement clearTree in JS
+            return;
+        }
+
+        isLoading = true;
+        StateHasChanged();
+
+        currentStep = 0;
+        steps.Clear(); // Clear previous steps
+        await JS.InvokeVoidAsync("drawTree", originalArray, -1, -1); // Reset tree to original state
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    // Note: This function modifies the input array 'arr' directly.
+    // It returns the sequence of states *after* each swap.
+    List<(int[] ArrayState, int Highlight1, int Highlight2)> HeapSortSteps(int[] arr)
+    {
+        var recordedSteps = new List<(int[] ArrayState, int Highlight1, int Highlight2)>();
+        int n = arr.Length;
+
+        void Swap(int i, int j)
+        {
+            (arr[i], arr[j]) = (arr[j], arr[i]);
+            // Record the state *after* the swap, highlighting the swapped elements
+            recordedSteps.Add((arr.ToArray(), i, j)); // Use ToArray() to store a snapshot
+        }
+
+        void Heapify(int heapSize, int i)
+        {
+            int largest = i;
+            int l = 2 * i + 1;
+            int r = 2 * i + 2;
+
+            // Check if left child exists and is greater than root
+            if (l < heapSize && arr[l] > arr[largest])
+                largest = l;
+
+            // Check if right child exists and is greater than largest so far
+            if (r < heapSize && arr[r] > arr[largest])
+                largest = r;
+
+            // If largest is not root
+            if (largest != i)
+            {
+                Swap(i, largest); // Swap and record the step
+
+                // Recursively heapify the affected sub-tree
+                Heapify(heapSize, largest);
+            }
+            // --- No else needed here. If no swap happens at this level, we don't record ---
+            // --- but the recursive call might still trigger swaps/recordings deeper down.---
+        }
+
+        // --- Build Max Heap ---
+        // Start from the last non-leaf node and go up to the root
+        for (int i = n / 2 - 1; i >= 0; i--)
+        {
+            Heapify(n, i); // Heapify will record steps internally if swaps occur
+        }
+
+        // --- Heap Sort (Extract elements) ---
+        for (int i = n - 1; i > 0; i--)
+        {
+            // Move current root to end
+            Swap(0, i); // Swap and record step
+
+            // call max heapify on the reduced heap [0...i-1]
+            Heapify(i, 0); // Heapify will record steps internally if swaps occur
+        }
+
+        // Add the final sorted state? Optional, depends if you want to show it explicitly.
+        // recordedSteps.Add((arr.ToArray(), -1, -1)); // Final sorted array, nothing highlighted
+
+        return recordedSteps;
+    }
+
+    bool TryParseInput(string input, out int[]? result) // Make result nullable
+    {
+        result = null;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+        try
+        {
+            result = input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                          .Select(int.Parse)
+                          .ToArray();
+            return result.Length > 0;
+        }
+        catch (FormatException)
+        {
+            result = null;
+            return false;
+        }
+        catch (OverflowException)
+        {
+            result = null;
+            return false;
+        }
+    }
+}

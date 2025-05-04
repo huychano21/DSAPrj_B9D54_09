@@ -1,0 +1,512 @@
+﻿@page "/binary-search-tree"
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@using System.Text.Json 
+
+<h3 class="text-2xl font-bold mb-4">Cây nhị phân tìm kiếm</h3>
+
+<RadzenCard class="mb-4">
+    <RadzenStack Gap="1rem">
+        <RadzenFormField Text="Nhập dãy số (cách nhau bởi dấu phẩy)" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="initialInput" Placeholder="Ví dụ: 8,3,10,1,6,14,4,7,13" Style="width: 100%;" Change="@(() => { rootNode = null; ClearVisualization(); })" />
+        </RadzenFormField>
+        <RadzenButton Text="Xây dựng cây" Click="BuildTree" Icon="build" ButtonStyle="ButtonStyle.Primary" Disabled="isLoading" />
+    </RadzenStack>
+</RadzenCard>
+
+@if (rootNode != null)
+{
+    <RadzenCard class="mb-4">
+        <RadzenRow Gutter="1rem">
+            <RadzenColumn Size="12" SizeMD="4">
+                <RadzenStack Gap="1rem">
+                    <RadzenFormField Text="Tìm kiếm giá trị" Variant="Variant.Outlined">
+                        <RadzenNumeric TValue="int?" @bind-Value="searchValue" Placeholder="Nhập giá trị" />
+                    </RadzenFormField>
+                    <RadzenButton Text="Tìm kiếm" Click="SearchNode" Icon="search" ButtonStyle="ButtonStyle.Info" Disabled="isLoading || searchValue == null" />
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn Size="12" SizeMD="4">
+                <RadzenStack Gap="1rem">
+                    <RadzenFormField Text="Chèn giá trị" Variant="Variant.Outlined">
+                        <RadzenNumeric TValue="int?" @bind-Value="insertValue" Placeholder="Nhập giá trị" />
+                    </RadzenFormField>
+                    <RadzenButton Text="Chèn" Click="InsertNode" Icon="add_circle_outline" ButtonStyle="ButtonStyle.Success" Disabled="isLoading || insertValue == null" />
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn Size="12" SizeMD="4">
+                <RadzenStack Gap="1rem">
+                    <RadzenFormField Text="Xóa giá trị" Variant="Variant.Outlined">
+                        <RadzenNumeric TValue="int?" @bind-Value="deleteValue" Placeholder="Nhập giá trị" />
+                    </RadzenFormField>
+                    <RadzenButton Text="Xóa" Click="DeleteNode" Icon="delete" ButtonStyle="ButtonStyle.Danger" Disabled="isLoading || deleteValue == null" />
+                </RadzenStack>
+            </RadzenColumn>
+        </RadzenRow>
+        <RadzenRow JustifyContent="JustifyContent.Center" class="mt-3">
+            <RadzenButton Text="Reset Cây" Click="ResetTree" Icon="refresh" ButtonStyle="ButtonStyle.Secondary" Disabled="isLoading" />
+        </RadzenRow>
+    </RadzenCard>
+}
+
+@if (isLoading)
+{
+    <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="margin-bottom: 20px;" />
+}
+
+@* Container for messages from JS - Added an ID *@
+<div id="bst-message" class="rz-text-center rz-mb-4" style="min-height: 24px; font-weight: bold; color: #d9534f;"></div>
+
+@* Container cho vis.js *@
+<div id="bst-container" style="height: 500px; border: 1px solid #dee2e6; background-color: #f8f9fa; border-radius: 4px;">
+    @* Nội dung cây sẽ được vẽ ở đây bởi JS *@
+</div>
+
+
+@code {
+    string initialInput = "8,3,10,1,6,14,4,7,13";
+    int? searchValue;
+    int? insertValue;
+    int? deleteValue;
+
+    BSTNode? rootNode; // Gốc của cây BST trong C#
+    bool isLoading = false;
+    string currentMessage = ""; // Thông báo hiển thị trên Blazor (có thể không cần nếu JS xử lý)
+
+    List<int> highlightPath = new List<int>(); // Lưu các node trên đường đi để tô màu
+    int? specialNodeId = null; // ID của node đặc biệt (mới chèn, thay thế...)
+
+    // --- Cấu trúc dữ liệu để gửi cho Vis.js ---
+    public class VisNode
+    {
+        public int id { get; set; } // vis.js thường dùng id chữ thường
+        public string label { get; set; } = "";
+        public VisNodeColor? color { get; set; } // Đối tượng màu sắc
+        public int level { get; set; } // Lưu level để JS có thể sắp xếp nếu cần
+    }
+    public class VisNodeColor
+    {
+        public string? border { get; set; }
+        public string? background { get; set; }
+        public VisHighlightColor? highlight { get; set; }
+    }
+    public class VisHighlightColor
+    {
+        public string? border { get; set; }
+        public string? background { get; set; }
+    }
+    public class VisEdge
+    {
+        public int from { get; set; }
+        public int to { get; set; }
+    }
+    public class VisData
+    {
+        public List<VisNode> nodes { get; set; } = new();
+        public List<VisEdge> edges { get; set; } = new();
+    }
+    // --- Kết thúc cấu trúc Vis.js ---
+
+
+    // --- Hàm xây dựng cây ---
+    async Task BuildTree()
+    {
+        isLoading = true;
+        rootNode = null; // Bắt đầu lại từ đầu
+        currentMessage = "";
+        highlightPath.Clear();
+        specialNodeId = null;
+        StateHasChanged(); // Cập nhật UI
+
+        try
+        {
+            // 1. Parse và loại bỏ trùng lặp
+            var distinctValues = initialInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                             .Select(int.Parse)
+                                             .Distinct()
+                                             .ToList();
+
+            if (!distinctValues.Any())
+            {
+                currentMessage = "Vui lòng nhập ít nhất một số.";
+                await ClearVisualization(); // Xóa hình ảnh cây cũ nếu có
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+
+            // 2. Xây dựng cây từ các giá trị duy nhất
+            foreach (var value in distinctValues)
+            {
+                rootNode = InsertNodeInternal(rootNode, value); // Dùng hàm nội bộ không cập nhật UI
+            }
+            currentMessage = $"Đã xây dựng cây từ {distinctValues.Count} giá trị duy nhất.";
+        }
+        catch (FormatException)
+        {
+            currentMessage = "Định dạng input không hợp lệ. Chỉ nhập số nguyên cách nhau bởi dấu phẩy.";
+            rootNode = null; // Đảm bảo cây bị xóa nếu có lỗi parse
+            await ClearVisualization();
+        }
+        catch (Exception ex)
+        {
+            currentMessage = $"Lỗi không xác định: {ex.Message}";
+            rootNode = null;
+            await ClearVisualization();
+        }
+
+        await UpdateVisualization(currentMessage); // Vẽ cây ban đầu
+        isLoading = false;
+        StateHasChanged(); // Cập nhật lại UI lần cuối
+    }
+
+    // --- Hàm chèn (Public - gọi từ Button) ---
+    async Task InsertNode()
+    {
+        if (insertValue == null) return;
+        if (rootNode == null) // Nếu cây chưa có, tạo node gốc
+        {
+            rootNode = new BSTNode(insertValue.Value);
+            currentMessage = $"Đã chèn {insertValue.Value} làm node gốc.";
+            highlightPath.Clear();
+            specialNodeId = insertValue.Value; // Highlight node vừa chèn
+            await UpdateVisualization(currentMessage, specialNodeId: specialNodeId);
+            insertValue = null; // Xóa input sau khi chèn
+            return;
+        }
+
+
+        isLoading = true;
+        currentMessage = "";
+        highlightPath.Clear();
+        specialNodeId = null;
+        StateHasChanged();
+
+        int valueToInsert = insertValue.Value;
+        bool inserted = false;
+
+        // Hàm nội bộ để theo dõi đường đi
+        BSTNode? InsertAndTrack(BSTNode? node, int value, List<int> path)
+        {
+            if (node == null)
+            {
+                path.Add(value); // Thêm chính nó vào path khi tạo node mới
+                inserted = true;
+                specialNodeId = value; // Đánh dấu node mới chèn
+                return new BSTNode(value);
+            }
+
+            path.Add(node.Value); // Thêm node hiện tại vào path
+
+            if (value < node.Value)
+            {
+                node.Left = InsertAndTrack(node.Left, value, path);
+            }
+            else if (value > node.Value)
+            {
+                node.Right = InsertAndTrack(node.Right, value, path);
+            }
+            else
+            {
+                // Giá trị đã tồn tại
+                inserted = false;
+            }
+            return node;
+        }
+
+        rootNode = InsertAndTrack(rootNode, valueToInsert, highlightPath);
+
+        if (inserted)
+        {
+            currentMessage = $"Đã chèn giá trị {valueToInsert}.";
+        }
+        else
+        {
+            currentMessage = $"Giá trị {valueToInsert} đã tồn tại trong cây.";
+            specialNodeId = valueToInsert; // Highlight node đã tồn tại
+        }
+
+        await UpdateVisualization(currentMessage, path: highlightPath, specialNodeId: specialNodeId);
+        insertValue = null; // Clear input
+        isLoading = false;
+        StateHasChanged();
+    }
+
+
+    // --- Hàm Tìm kiếm ---
+    async Task SearchNode()
+    {
+        if (searchValue == null || rootNode == null) return;
+
+        isLoading = true;
+        currentMessage = "";
+        highlightPath.Clear();
+        specialNodeId = null;
+        StateHasChanged();
+
+        int valueToSearch = searchValue.Value;
+        bool found = SearchInternal(rootNode, valueToSearch, highlightPath);
+
+        if (found)
+        {
+            currentMessage = $"Tìm thấy giá trị {valueToSearch}.";
+            specialNodeId = valueToSearch; // Highlight node tìm thấy
+        }
+        else
+        {
+            currentMessage = $"Không tìm thấy giá trị {valueToSearch}.";
+        }
+
+        await UpdateVisualization(currentMessage, path: highlightPath, specialNodeId: specialNodeId);
+        // Không xóa searchValue để người dùng có thể xem kết quả
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    // Hàm tìm kiếm nội bộ (trả về bool và cập nhật path)
+    bool SearchInternal(BSTNode? node, int value, List<int> path)
+    {
+        if (node == null)
+        {
+            return false; // Không tìm thấy
+        }
+
+        path.Add(node.Value); // Thêm node hiện tại vào đường đi
+
+        if (value == node.Value)
+        {
+            return true; // Tìm thấy
+        }
+        else if (value < node.Value)
+        {
+            return SearchInternal(node.Left, value, path);
+        }
+        else
+        {
+            return SearchInternal(node.Right, value, path);
+        }
+    }
+
+
+    // --- Hàm Xóa ---
+    async Task DeleteNode()
+    {
+        if (deleteValue == null || rootNode == null) return;
+
+        isLoading = true;
+        currentMessage = "";
+        highlightPath.Clear(); // Path để *tìm* node cần xóa
+        specialNodeId = null; // Node thay thế (nếu có)
+        StateHasChanged();
+
+        int valueToDelete = deleteValue.Value;
+        bool found = false; // Cờ kiểm tra node có tồn tại không
+
+        rootNode = DeleteNodeInternal(rootNode, valueToDelete, ref found, highlightPath);
+
+        if (found)
+        {
+            currentMessage = $"Đã xóa giá trị {valueToDelete}.";
+            // specialNodeId có thể đã được set trong DeleteNodeInternal nếu có node thay thế
+        }
+        else
+        {
+            currentMessage = $"Không tìm thấy giá trị {valueToDelete} để xóa.";
+        }
+
+        // Vẽ lại cây sau khi xóa, tô màu đường đi tìm kiếm và node thay thế (nếu có)
+        await UpdateVisualization(currentMessage, path: highlightPath, specialNodeId: specialNodeId);
+        deleteValue = null; // Clear input
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    // Hàm xóa nội bộ (trả về node mới của cây con và cập nhật cờ found, path)
+    BSTNode? DeleteNodeInternal(BSTNode? node, int value, ref bool found, List<int> path)
+    {
+        if (node == null)
+        {
+            return null; // Không tìm thấy
+        }
+
+        path.Add(node.Value); // Thêm vào path khi duyệt qua
+
+        // Đi tìm node cần xóa
+        if (value < node.Value)
+        {
+            node.Left = DeleteNodeInternal(node.Left, value, ref found, path);
+        }
+        else if (value > node.Value)
+        {
+            node.Right = DeleteNodeInternal(node.Right, value, ref found, path);
+        }
+        else // Đã tìm thấy node cần xóa (node.Value == value)
+        {
+            found = true; // Đánh dấu đã tìm thấy
+
+            // Trường hợp 1 & 2: Node có 0 hoặc 1 con
+            if (node.Left == null)
+            {
+                specialNodeId = node.Right?.Value; // Node thay thế là con phải (có thể null)
+                return node.Right; // Trả về con phải (hoặc null)
+            }
+            else if (node.Right == null)
+            {
+                specialNodeId = node.Left?.Value; // Node thay thế là con trái
+                return node.Left; // Trả về con trái
+            }
+
+            // Trường hợp 3: Node có 2 con
+            // Tìm node nhỏ nhất ở cây con bên phải (inorder successor)
+            BSTNode minNodeRightSubtree = FindMinValueNode(node.Right);
+            specialNodeId = minNodeRightSubtree.Value; // Node thay thế
+
+            // Chép giá trị của inorder successor vào node hiện tại
+            node.Value = minNodeRightSubtree.Value;
+
+            // Xóa inorder successor khỏi cây con bên phải (đệ quy)
+            // Không cần theo dõi path cho lần xóa đệ quy này nữa
+            List<int> dummyPath = new List<int>();
+            bool dummyFound = false; // Không cần quan tâm kết quả tìm thấy ở đây
+            node.Right = DeleteNodeInternal(node.Right, minNodeRightSubtree.Value, ref dummyFound, dummyPath);
+        }
+
+        return node; // Trả về node (có thể đã bị thay đổi)
+    }
+
+    // Helper: Tìm node có giá trị nhỏ nhất trong cây con (đi sang trái hết cỡ)
+    BSTNode FindMinValueNode(BSTNode node)
+    {
+        BSTNode current = node;
+        while (current.Left != null)
+        {
+            current = current.Left;
+        }
+        return current;
+    }
+
+
+    // --- Hàm Reset và vẽ lại ---
+    async Task ResetTree()
+    {
+        isLoading = true;
+        StateHasChanged();
+        initialInput = "8,3,10,1,6,14,4,7,13"; // Hoặc về rỗng tùy ý
+        searchValue = null;
+        insertValue = null;
+        deleteValue = null;
+        rootNode = null;
+        currentMessage = "Đã reset. Nhập dãy số và nhấn 'Xây dựng cây'.";
+        highlightPath.Clear();
+        specialNodeId = null;
+        await ClearVisualization(); // Gọi hàm JS để xóa cây
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    async Task ClearVisualization()
+    {
+        await JS.InvokeVoidAsync("clearBST");
+        currentMessage = ""; // Xóa thông báo Blazor
+        StateHasChanged();
+    }
+
+
+    // --- Hàm Serialize và gọi JS để vẽ ---
+    async Task UpdateVisualization(string message, List<int>? path = null, int? specialNodeId = null)
+    {
+        var visData = SerializeTreeForVis(rootNode, path ?? new List<int>(), specialNodeId);
+        // Sử dụng System.Text.Json để serialize đúng cách cho JS
+        await JS.InvokeVoidAsync("drawBST", visData, message);
+    }
+
+    // Chuyển đổi cây C# sang cấu trúc VisData
+    VisData SerializeTreeForVis(BSTNode? root, List<int> highlightPathValues, int? specialNodeVal)
+    {
+        var nodes = new List<VisNode>();
+        var edges = new List<VisEdge>();
+        if (root == null) return new VisData { nodes = nodes, edges = edges };
+
+        var queue = new Queue<(BSTNode node, int level)>();
+        queue.Enqueue((root, 0));
+        var processedNodes = new HashSet<int>(); // Tránh lỗi nếu cây có cấu trúc lạ
+
+        while (queue.Count > 0)
+        {
+            var (currentNode, level) = queue.Dequeue();
+
+            if (processedNodes.Contains(currentNode.Value)) continue;
+            processedNodes.Add(currentNode.Value);
+
+
+            // Xác định màu sắc
+            VisNodeColor nodeColor = new VisNodeColor
+                { // Màu mặc định
+                    border = "#2B7CE9",
+                    background = "#97C2FC",
+                    highlight = new VisHighlightColor { border = "#2B7CE9", background = "#D2E5FF" }
+                };
+            bool isHighlighted = highlightPathValues.Contains(currentNode.Value);
+            bool isSpecial = currentNode.Value == specialNodeVal;
+
+            if (isSpecial) // Ưu tiên màu đặc biệt (ví dụ: xanh lá cây)
+            {
+                nodeColor = new VisNodeColor
+                    {
+                        border = "#1E7E34",
+                        background = "#28A745", // Green tones
+                        highlight = new VisHighlightColor { border = "#1E7E34", background = "#5CB85C" }
+                    };
+            }
+            else if (isHighlighted) // Nếu không phải special thì mới xét highlight path (ví dụ: vàng)
+            {
+                nodeColor = new VisNodeColor
+                    {
+                        border = "#FFB74D",
+                        background = "#FFE0B2", // Orange/Yellow tones
+                        highlight = new VisHighlightColor { border = "#FFA000", background = "#FFCA28" }
+                    };
+            }
+
+
+            nodes.Add(new VisNode
+                {
+                    id = currentNode.Value,
+                    label = currentNode.Value.ToString(),
+                    color = nodeColor, // Gán đối tượng màu
+                    level = level
+                });
+
+            if (currentNode.Left != null)
+            {
+                edges.Add(new VisEdge { from = currentNode.Value, to = currentNode.Left.Value });
+                queue.Enqueue((currentNode.Left, level + 1));
+            }
+            if (currentNode.Right != null)
+            {
+                edges.Add(new VisEdge { from = currentNode.Value, to = currentNode.Right.Value });
+                queue.Enqueue((currentNode.Right, level + 1));
+            }
+        }
+        return new VisData { nodes = nodes, edges = edges };
+    }
+
+    // --- Hàm Insert nội bộ (không cập nhật UI, dùng khi BuildTree) ---
+    BSTNode? InsertNodeInternal(BSTNode? node, int value)
+    {
+        if (node == null)
+        {
+            return new BSTNode(value);
+        }
+
+        if (value < node.Value)
+        {
+            node.Left = InsertNodeInternal(node.Left, value);
+        }
+        else if (value > node.Value) // Bỏ qua nếu bằng (đã distinct)
+        {
+            node.Right = InsertNodeInternal(node.Right, value);
+        }
+        return node;
+    }
+}

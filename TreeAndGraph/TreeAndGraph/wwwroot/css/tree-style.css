@@ -1,0 +1,95 @@
+﻿/* File: wwwroot/css/tree-styles.css */
+
+/* Basic page layout */
+.tree-visualizer-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 1rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Styling for the SVG container */
+.tree-svg-container {
+    border: 1px solid #dee2e6; /* Light grey border */
+    background-color: #f8f9fa; /* Very light grey background */
+    min-height: 400px; /* Ensure minimum drawing space */
+    position: relative; /* Needed for absolute positioning within SVG if required */
+    overflow: auto; /* Allow scrolling if tree is large */
+    user-select: none; /* Prevent text selection during drag */
+}
+
+.tree-svg-element {
+    display: block; /* Ensure SVG takes block space */
+    /* Set large default size - will be overridden by container usually */
+    min-width: 600px;
+    min-height: 400px;
+}
+
+
+/* Node styling (applied via Blazor/SVG attributes, but can define classes) */
+.tree-node circle, .bst-node circle {
+    stroke: #6c757d; /* Default border color */
+    stroke-width: 1.5px;
+    cursor: grab; /* Indicate draggable */
+    transition: fill 0.2s ease-in-out, stroke 0.2s ease-in-out; /* Smooth transitions */
+}
+
+.tree-node text, .bst-node text {
+    font-size: 12px;
+    font-weight: 500;
+    text-anchor: middle;
+    fill: #212529; /* Dark text */
+    pointer-events: none; /* Text shouldn't block dragging */
+    dy: 0.3em; /* Vertical alignment */
+}
+
+/* Edge styling */
+.tree-edge, .bst-edge {
+    stroke: #adb5bd; /* Default edge color */
+    stroke-width: 1.5px;
+    /* marker-end: url(#arrowhead); /* Applied in SVG markup */
+    transition: stroke 0.2s ease-in-out, stroke-width 0.2s ease-in-out;
+}
+
+/* Highlighting styles (examples - match Blazor logic) */
+.tree-node.highlight-current circle, .bst-node.highlight-current circle {
+    fill: #ffdd57; /* Yellow */
+    stroke: #ffae00;
+    stroke-width: 2.5px;
+}
+
+.tree-node.highlight-visited circle, .bst-node.highlight-visited circle {
+    fill: #d1e7dd; /* Light green */
+    stroke: #198754; /* Green */
+}
+
+.tree-edge.highlight-traversed, .bst-edge.highlight-traversed {
+    stroke: #495057; /* Darker grey/black */
+    stroke-width: 2.5px;
+}
+
+.tree-node.dragging circle, .bst-node.dragging circle {
+    cursor: grabbing;
+    opacity: 0.8;
+}
+
+/* Style for RadzenFieldset */
+.rz-fieldset {
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    margin-bottom: 1rem; /* Add some space between fieldsets */
+}
+
+    .rz-fieldset .rz-fieldset-legend {
+        font-weight: 600;
+        color: #0d6efd; /* Blue legend text */
+    }
+
+/* Styling for error messages */
+.error-list {
+    color: #dc3545; /* Bootstrap danger color */
+    font-size: 0.9em;
+    margin-top: 0.5rem;
+    padding-left: 1.5rem;
+}

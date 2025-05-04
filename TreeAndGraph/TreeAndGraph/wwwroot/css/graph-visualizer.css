@@ -1,0 +1,109 @@
+﻿/* Basic styling for the canvas container and canvas itself */
+#graphCanvas {
+    border: 1px solid #ccc; /* Light gray border */
+    background-color: #f8f9fa; /* Light background */
+    display: block; /* Prevent extra space below canvas */
+    width: 100%; /* Take full width of container */
+    /* height is usually set via JS or style attribute for better control */
+    /* height: 600px; */
+    cursor: default; /* Default cursor */
+    box-sizing: border-box; /* Include border in width/height */
+    border-radius: 4px; /* Slightly rounded corners */
+}
+
+    /* --- Cursors for different modes (can be set via JS) --- */
+    #graphCanvas.mode-force:hover {
+        cursor: grab;
+    }
+
+    #graphCanvas.mode-force .node:hover {
+        cursor: grab;
+    }
+
+    #graphCanvas.mode-force .node.dragging {
+        cursor: grabbing;
+    }
+    /* While dragging */
+
+    #graphCanvas.mode-draw {
+        cursor: crosshair;
+    }
+
+        #graphCanvas.mode-draw .node:hover {
+            cursor: pointer;
+        }
+    /* To start edge */
+
+    #graphCanvas.mode-edit .node:hover,
+    #graphCanvas.mode-edit .edge:hover {
+        cursor: pointer;
+    }
+    /* Indicate editable */
+
+    #graphCanvas.mode-delete .node:hover,
+    #graphCanvas.mode-delete .edge:hover {
+        cursor: pointer;
+    }
+/* Indicate deletable */
+
+
+/* --- Basic Element Styles (Drawn via JS Canvas API) --- */
+/* These are conceptual - actual appearance is controlled by JS drawing functions */
+
+ .node {
+    fill: lightblue;
+    stroke: black;
+    stroke-width: 1px;
+}
+
+.node.fixed {
+    fill: lightgray;
+}
+
+.node-label {
+    font-family: sans-serif;
+    font-size: 10px;
+    fill: black;
+    text-anchor: middle;
+    dominant-baseline: middle;
+}
+
+.edge {
+    stroke: gray;
+    stroke-width: 2px;
+}
+
+.edge-weight {
+    font-family: sans-serif;
+    font-size: 9px;
+    fill: blue;
+    background-color: rgba(248, 249, 250, 0.7); // Semi-transparent background
+    padding: 1px 2px;
+}
+
+.arrowhead {
+    fill: gray;
+    stroke: gray;
+}
+
+/* --- Highlighting Styles (Applied by JS based on AlgorithmStep) --- */
+/* These classes would be conceptually applied in the JS drawing logic */
+
+.node.highlighted {
+    fill: yellow;
+    stroke: orange;
+    stroke-width: 2px;
+}
+
+.edge.highlighted {
+    stroke: orange;
+    stroke-width: 4px;
+}
+
+.arrowhead.highlighted {
+     fill: orange;
+     stroke: orange;
+} 
+
+/* Add more specific styles as needed */
+

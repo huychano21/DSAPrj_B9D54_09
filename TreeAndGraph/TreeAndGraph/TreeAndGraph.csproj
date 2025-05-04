@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.4" />
+    <PackageReference Include="Radzen.Blazor" Version="6.4.0" />
+    <PackageReference Include="Radzen.Blazor.GridColumnVisibilityChooser" Version="2.2.0" />
+    <PackageReference Include="Radzen.Blazor.GridExportOptions" Version="3.3.0.3" />
+    <PackageReference Include="Recrovit.RecroGridFramework.Client.Blazor.RadzenUI" Version="8.17.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="wwwroot\images\" />
+  </ItemGroup>
+
+</Project>
